@@ -560,7 +560,7 @@ object SongPlayer {
             // Wait for a non-buffering state for this URI, but remain bounded if Spotify stalls.
             val readyState = kotlinx.coroutines.withTimeoutOrNull(PODCAST_RESUME_READY_TIMEOUT_MS) {
                 api.player.state.first { state ->
-                    state?.item?.uri == uri && !state.isBuffering
+                    state != null && state.item?.uri == uri && !state.isBuffering
                 }
             }
             if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri)) return@launch
@@ -586,7 +586,9 @@ object SongPlayer {
     private fun resumeSavedPodcastEpisode(uri: String, reportedPositionMs: Long) {
         val episodeId = uri.removePrefix("spotify:episode:")
         val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
-        if (com.music.spotui.data.preferences.podcastResumePosition(saved, reportedPositionMs) == null) return
+        if (saved <= 2_000L) return
+        // Check again after the player is ready instead of trusting its first state event;
+        // that event can still carry the previous item's position.
         restorePodcastEpisodePosition(
             uri = uri,
             requestedPosition = { com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId) },
