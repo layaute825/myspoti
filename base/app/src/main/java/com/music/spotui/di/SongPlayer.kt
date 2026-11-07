@@ -622,6 +622,9 @@ object SongPlayer {
 
     /** Call on the main thread before navigating to logout. */
     fun clearSession() {
+        // Keep the current episode's latest position even when the user signs out or the
+        // player session is torn down before the next periodic snapshot.
+        saveCurrentEpisodeProgress()
         main.removeCallbacksAndMessages(null)
         // A play, pause or skip still waiting (a slow page, a page still loading) belongs to the
         // session that ends: it is dropped, not sent once the next account's page is ready.
@@ -872,6 +875,11 @@ object SongPlayer {
         if (trackChanged && uri.startsWith("spotify:episode:")) {
             val explicitStart = consumeExplicitEpisodeStart(uri)
             if (explicitStart != null) {
+                // An explicit start can be a deliberate rewind (for example, tapping an earlier
+                // chapter). Persist it locally before Spotify's first state can report stale 0:00.
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                    uri.removePrefix("spotify:episode:"), explicitStart, durationMs, allowRewind = true,
+                )
                 // Even explicit podcast starts (saved progress or a chapter tap) are verified:
                 // Spotify occasionally ignores the position passed to play() and opens at 0:00.
                 restorePodcastEpisodePosition(uri, { explicitStart }, "requested")
@@ -2505,6 +2513,12 @@ object SongPlayer {
 
     fun seekTo(ms: Long) {
         if (LocalPlayer.active.value) { LocalPlayer.seekTo(ms); return }
+        // A backwards seek is intentional user input, unlike an older Spotify state snapshot.
+        currentPodcastEpisodeId()?.let { episodeId ->
+            com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                episodeId, ms.coerceAtLeast(0L), getDuration(), allowRewind = true,
+            )
+        }
         cancelBurst()
         val now = SystemClock.elapsedRealtime()
         positionMs = ms
