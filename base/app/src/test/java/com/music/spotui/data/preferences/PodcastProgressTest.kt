@@ -57,4 +57,26 @@ class PodcastProgressTest {
         assertEquals(240_000L, podcastDisplayedPositionMs(240_000L, 180_000L, 200_000L))
     }
 
+    @Test
+    fun staleSpotifyPositionCannotEraseNewerLocalProgress() {
+        assertNull(podcastProgressToPersist(180_000L, 0L))
+        assertNull(podcastProgressToPersist(180_000L, 120_000L))
+    }
+
+    @Test
+    fun smallReportingJitterNeverMovesTheStoredPositionBackwards() {
+        assertEquals(180_000L, podcastProgressToPersist(180_000L, 179_000L))
+    }
+
+    @Test
+    fun newerSnapshotsAdvanceProgress() {
+        assertEquals(185_000L, podcastProgressToPersist(180_000L, 185_000L))
+    }
+
+    @Test
+    fun explicitSeekCanMoveProgressBackwardsOrResetIt() {
+        assertEquals(60_000L, podcastProgressToPersist(180_000L, 60_000L, allowRewind = true))
+        assertEquals(0L, podcastProgressToPersist(180_000L, 0L, allowRewind = true))
+    }
+
 }
