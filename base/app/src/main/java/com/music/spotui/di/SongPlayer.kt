@@ -491,11 +491,6 @@ object SongPlayer {
     }
 
     /**
-     * The saved session's position kept current while a song plays (every [POSITION_SAVE_MS]): saved on
-     * track changes and play/pause only, an app closed mid-song resumed it from its start (reported
-     * with an extension's song after a relaunch).
-     */
-    /**
      * Resolve the episode from the audio source itself. The last-track preference is only a
      * single-player snapshot and must not decide which podcast's history gets persisted.
      */
