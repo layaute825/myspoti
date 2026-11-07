@@ -1,10 +1,6 @@
 package com.music.spotui.data.preferences
 
 /**
- * Returns a stored podcast position only when it is meaningfully ahead of the player's current
- * position. The tolerance avoids repeated seeks caused by normal state-reporting jitter.
- */
-/**
  * Computes the next durable local snapshot for an episode.
  *
  * Spotify can briefly publish an older position while switching screens/devices. Such a snapshot
@@ -23,6 +19,10 @@ internal fun podcastProgressToPersist(
     return maxOf(previousPositionMs, incomingPositionMs)
 }
 
+/**
+ * Returns a stored podcast position only when it is meaningfully ahead of the player's current
+ * position. The tolerance avoids repeated seeks caused by normal state-reporting jitter.
+ */
 internal fun podcastResumePosition(
     savedPositionMs: Long,
     currentPositionMs: Long,
