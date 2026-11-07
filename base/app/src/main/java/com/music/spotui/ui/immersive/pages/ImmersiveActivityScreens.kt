@@ -289,7 +289,6 @@ fun ImmersiveEpisodeScreen(navController: NavController, episodeId: String, fall
     val finished = vm.finished.value
     var menuOpen by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
-    val np by SongPlayer.nowPlaying
     val uri = "spotify:episode:$episodeId"
     val playing = SongPlayer.isEpisodeCurrent(episodeId) && SongPlayer.isPlaying()
     val saved = SongPlayer.library[uri] == true
@@ -366,9 +365,11 @@ fun ImmersiveEpisodeScreen(navController: NavController, episodeId: String, fall
         if (vm.loading.value) immersiveSongListSkeleton(count = 2, keyPrefix = "episode:loading")
         if (vm.failed.value) item(key = "failed") { ImmersiveMessageState(stringResource(R.string.episode_not_found)) }
         episode?.let { ep ->
-            if (ep.playedPositionMs > 0 && !finished) item(key = "remaining") {
+            val localPosition = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+            val resumePosition = maxOf(ep.playedPositionMs, localPosition)
+            if (resumePosition > 0L && !finished) item(key = "remaining") {
                 Text(
-                    stringResource(R.string.episode_remaining, episodeClock(ep.durationMs - ep.playedPositionMs)),
+                    stringResource(R.string.episode_remaining, episodeClock((ep.durationMs.toLong() - resumePosition).coerceAtLeast(0L))),
                     style = Immersive.Caption.copy(color = Immersive.Accent),
                     modifier = Modifier.padding(horizontal = Immersive.Gutter, vertical = 4.dp),
                 )

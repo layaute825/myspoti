@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -74,10 +77,14 @@ internal fun ImmersivePage(
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: LazyListScope.() -> Unit,
 ) {
+    val systemNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     ImmersivePageFrame {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(top = immersiveTopContentPadding(), bottom = bottomPadding),
+            contentPadding = PaddingValues(
+                top = immersiveTopContentPadding(),
+                bottom = bottomPadding + systemNavigationInset,
+            ),
             verticalArrangement = verticalArrangement,
             modifier = modifier.fillMaxSize().immersiveHazeSource().immersiveChromeScroll(),
         ) {
