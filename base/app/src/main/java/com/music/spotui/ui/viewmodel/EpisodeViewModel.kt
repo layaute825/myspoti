@@ -48,6 +48,15 @@ class EpisodeViewModel constructor(
         failed.value = false
         viewModelScope.launch(Dispatchers.IO) {
             val loaded = runCatching { repository.provideEpisode(episodeId) }.getOrNull()
+            // Seed this phone's offline history from Spotify once, but never replace a local
+            // snapshot (which may represent a deliberate rewind or reset).
+            if (loaded?.isEpisode == true && loaded.playedPositionMs > 0L &&
+                !com.music.spotui.data.preferences.PodcastPrefs.hasStoredProgress(episodeId)
+            ) {
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                    episodeId, loaded.playedPositionMs, loaded.durationMs.toLong(),
+                )
+            }
             kotlinx.coroutines.withContext(Dispatchers.Main) {
                 loading.value = false
                 failed.value = loaded == null
