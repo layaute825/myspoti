@@ -147,9 +147,15 @@ object LocalPlayer {
             ?.removePrefix("episode:")
             ?.takeIf { it.isNotBlank() }
 
-    private fun savePodcastEpisodePosition(track: LocalTrack?, positionMs: Long) {
+    private fun savePodcastEpisodePosition(
+        track: LocalTrack?,
+        positionMs: Long,
+        allowRewind: Boolean = false,
+    ) {
         val episodeId = podcastEpisodeId(track) ?: return
-        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, positionMs, track?.durationMs ?: 0L)
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+            episodeId, positionMs, track?.durationMs ?: 0L, allowRewind = allowRewind,
+        )
     }
 
     /** Restore an episode selected directly from the downloaded/local queue. */
@@ -1545,15 +1551,24 @@ object LocalPlayer {
     fun seekTo(ms: Long) {
         endFade()
         exo?.let { p ->
+            // A backwards seek is intentional input, not a stale playback snapshot.
+            val track = current()
             // A seek into the tail of a song is the user's choice: that song then ends as usual.
             if (CrossfadeRamp.shouldStart(CrossfadePref.seconds, duration(), ms)) noFadeFor = p.currentMediaItemIndex
-            if (CastPlayback.active) { CastPlayback.seek(ms); p.seekTo(ms); return }
+            if (CastPlayback.active) {
+                savePodcastEpisodePosition(track, ms.coerceAtLeast(0L), allowRewind = true)
+                CastPlayback.seek(ms); p.seekTo(ms); return
+            }
             val known = knownLength()
             // To the song's end: it ended, and plays again as its repeat says (never the next song then).
-            if (LocalRepeat.seekEnds(ms, known) && playAgain(p, seekAt = ms)) return
+            if (LocalRepeat.seekEnds(ms, known) && playAgain(p, seekAt = ms)) {
+                savePodcastEpisodePosition(track, ms.coerceAtLeast(0L), allowRewind = true)
+                return
+            }
             // Within the length the player knows: Spotify's (or an extension's) is not the audio's.
             val to = LocalRepeat.seekTarget(ms, known)
             if (to != ms) log("seek to $ms ms kept within the audio's $known ms")
+            savePodcastEpisodePosition(track, to.coerceAtLeast(0L), allowRewind = true)
             p.seekTo(to)
         }
     }
