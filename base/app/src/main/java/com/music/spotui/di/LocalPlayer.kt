@@ -156,10 +156,10 @@ object LocalPlayer {
     private fun resumePodcastEpisodeIfNeeded(p: ExoPlayer) {
         val track = current() ?: return
         val episodeId = podcastEpisodeId(track) ?: return
-        val target = com.music.spotui.data.preferences.podcastResumePosition(
-            com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
-            p.currentPosition,
-        ) ?: return
+        if (com.music.spotui.data.preferences.podcastResumePosition(
+                com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
+                p.currentPosition,
+            ) == null) return
         val index = p.currentMediaItemIndex
         handler.postDelayed({
             if (exo !== p || !active.value || p.currentMediaItemIndex != index || current()?.id != track.id) return@postDelayed
@@ -469,6 +469,7 @@ object LocalPlayer {
      */
     fun play(list: List<LocalTrack>, index: Int, shuffle: Boolean = false, context: String? = null, contextUri: String = "", startMs: Long = 0L, continues: Boolean = false, paused: Boolean = false) {
         if (list.isEmpty()) return
+        if (active.value) savePodcastEpisodePosition(current(), position())
         // Another song picked: repeat once was for the song left.
         val shown = SongPlayer.nowPlaying.value.uri.substringAfterLast(':')
         val picked = list.getOrNull(index.coerceIn(0, list.lastIndex))?.let(::spotifyId).orEmpty()
@@ -527,6 +528,7 @@ object LocalPlayer {
     /** Back to Spotify: stop and forget the local queue. */
     fun stop() {
         if (!active.value) return
+        savePodcastEpisodePosition(current(), position())
         CastPlayback.stop(back = false)
         endFade()
         active.value = false
