@@ -11,3 +11,15 @@ internal fun podcastResumePosition(
 ): Long? = savedPositionMs.takeIf {
     it > toleranceMs && currentPositionMs + toleranceMs < it
 }
+
+
+/**
+ * The progress shown for an episode must never move backwards just because Spotify's show-page
+ * response is stale. The server, local durable snapshot, and current player clock are all valid
+ * sources; the furthest known non-negative position wins.
+ */
+internal fun podcastDisplayedPositionMs(
+    serverPositionMs: Long,
+    savedPositionMs: Long,
+    livePositionMs: Long,
+): Long = maxOf(0L, serverPositionMs, savedPositionMs, livePositionMs)
