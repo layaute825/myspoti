@@ -41,4 +41,9 @@ internal fun podcastDisplayedPositionMs(
     serverPositionMs: Long,
     savedPositionMs: Long,
     livePositionMs: Long,
-): Long = maxOf(0L, serverPositionMs, savedPositionMs, livePositionMs)
+    preferLocalSnapshot: Boolean = false,
+): Long = if (preferLocalSnapshot) {
+    maxOf(0L, savedPositionMs, livePositionMs)
+} else {
+    maxOf(0L, serverPositionMs, livePositionMs)
+}
