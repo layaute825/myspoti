@@ -39,6 +39,9 @@ class ShowViewModel constructor(
     /** Following the show (the pill's state), updated on tap before Spotify answers. */
     val following = mutableStateOf(false)
 
+    /** This podcast's automatic new-episode download switch. */
+    val autoDownload = mutableStateOf(false)
+
     /**
      * Episode uri → finished. Spotify's per-episode state comes with the rows; this holds what
      * the user just changed (and the page's own "markedasfinished" set).
@@ -77,6 +80,7 @@ class ShowViewModel constructor(
         showKey = showId
         previousOpened.value = PodcastPrefs.lastOpened(showId)
         filter.value = PodcastPrefs.filter(showId)
+        autoDownload.value = PodcastPrefs.autoDownload(showId)
         viewModelScope.launch(Dispatchers.IO) {
             repository.provideShowPage(showId).collect { response ->
                 _page.value = response
@@ -85,7 +89,11 @@ class ShowViewModel constructor(
                 val loaded = (response as? Response.Success)?.data ?: return@collect
                 following.value = loaded.show.saved || SongPlayer.library["spotify:show:$showId"] == true
                 if (!loaded.audiobook && loaded.items.isNotEmpty()) {
-                    PodcastPrefs.markOpened(showId, loaded.items.maxOf { it.releaseDate }, following.value)
+                    val newest = loaded.items.maxOf { it.releaseDate }
+                    PodcastPrefs.markOpened(showId, newest, following.value)
+                    PodcastPrefs.autoDownloadCandidates(showId, loaded.items).forEach { episode ->
+                        com.music.spotui.data.offline.PodcastDownloader.enqueue(episode)
+                    }
                 }
             }
         }
@@ -114,6 +122,14 @@ class ShowViewModel constructor(
                     kotlinx.coroutines.withContext(Dispatchers.Main) { finished.remove(episode.url) }
                 }
         }
+    }
+
+    /** Enable downloads for releases newer than the newest episode already visible. */
+    fun setAutoDownload(showId: String, on: Boolean) {
+        val loaded = (_page.value as? Response.Success)?.data
+        val newest = loaded?.items?.maxOfOrNull { it.releaseDate }.orEmpty()
+        PodcastPrefs.setAutoDownload(showId, on, newest)
+        autoDownload.value = on
     }
 
     fun setFollow(showId: String, on: Boolean) {
