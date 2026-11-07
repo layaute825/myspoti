@@ -196,6 +196,12 @@ data class Episode(
  * [url] is the publisher's own file — clear MP3/M4A, no DRM — when Spotify exposes one.
  * It is null for Spotify-exclusive shows, whose only copy is Widevine-encrypted.
  */
+/** A chapter heading returned by Spotify's own episode transcript service. */
+data class EpisodeChapter(
+    val startMs: Long,
+    val title: String,
+)
+
 data class EpisodeAudio(
     val url: String?,
     /** "ALLOWED", "MANDATORY" or "NONE": whether the publisher's file exists. */

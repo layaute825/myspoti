@@ -168,6 +168,21 @@ class SpotifyHome(private val gql: Gql) : Home {
     }
 }
 
+/**
+ * Only sections with a title are chapter headings. Speaker switches are part of the transcript,
+ * not chapters; sentence/text sections are deliberately ignored.
+ */
+internal fun spotifyEpisodeChapters(transcript: JsonElement): List<app.myspoti.api.EpisodeChapter> =
+    transcript.list("section").mapNotNull { section ->
+        val title = section.str("title.title")?.trim().orEmpty()
+        val start = section.long("startMs") ?: return@mapNotNull null
+        if (title.isBlank() || title.matches(Regex("(?i)Speaker\\s+\\d+")) || start < 0L) {
+            null
+        } else {
+            app.myspoti.api.EpisodeChapter(startMs = start, title = title)
+        }
+    }.distinctBy { it.startMs }.sortedBy { it.startMs }
+
 class SpotifyPodcasts(private val gql: Gql, private val bridge: Bridge, private val http: SpotifyHttp) : Podcasts {
     private suspend fun showUnion(uri: Uri) = gql.query("queryShowMetadataV2", vars(
         "uri" to uri, "includeContentCapabilityTrait" to true, "includeEpisodeContentRatingsV2" to true,
@@ -197,6 +212,20 @@ class SpotifyPodcasts(private val gql: Gql, private val bridge: Bridge, private 
     override suspend fun episode(uri: Uri): Episode =
         episode(gql.query("getEpisodeOrChapter", vars("uri" to uri, "includeEpisodeContentRatingsV2" to true))
             .entity("data.episodeUnionV2", "getEpisodeOrChapter")) ?: throw GqlException("getEpisodeOrChapter", "bad episode")
+
+    /**
+     * Spotify's own transcript read-along response contains chapter heading sections with
+     * millisecond start positions. It is separate from the episode description (and is where
+     * Spotify's auto-generated chapter headings are exposed to its mobile listener UI).
+     * Episodes without a transcript simply return no chapter sections.
+     */
+    override suspend fun episodeChapters(uri: Uri): List<app.myspoti.api.EpisodeChapter> {
+        val id = idOf(uri)
+        val transcript = http.getJson(
+            "https://spclient.wg.spotify.com/transcript-read-along/v2/episode/$id?format=json",
+        ) ?: return emptyList()
+        return spotifyEpisodeChapters(transcript)
+    }
 
     override suspend fun audiobook(uri: Uri): Audiobook {
         val d = showUnion(uri)
