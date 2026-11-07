@@ -127,8 +127,7 @@ class ShowViewModel constructor(
     /** Enable downloads for releases newer than the newest episode already visible. */
     fun setAutoDownload(showId: String, on: Boolean) {
         val loaded = (_page.value as? Response.Success)?.data
-        val newest = loaded?.items?.maxOfOrNull { it.releaseDate }.orEmpty()
-        PodcastPrefs.setAutoDownload(showId, on, newest)
+        PodcastPrefs.setAutoDownload(showId, on, loaded?.items.orEmpty())
         autoDownload.value = on
     }
 

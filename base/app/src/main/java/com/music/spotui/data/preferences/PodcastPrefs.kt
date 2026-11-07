@@ -64,28 +64,59 @@ object PodcastPrefs {
      * Enabling auto-download starts from the newest episode already visible: it does not
      * unexpectedly download a show's entire back catalogue. Later releases are queued on refresh.
      */
-    fun setAutoDownload(showId: String, enabled: Boolean, newestKnownRelease: String = "") {
+    fun setAutoDownload(
+        showId: String,
+        enabled: Boolean,
+        newestKnownEpisodes: List<SongsModel> = emptyList(),
+    ) {
         if (showId.isBlank()) return
+        val newestDate = newestKnownEpisodes.maxOfOrNull { it.releaseDate }.orEmpty()
+        val latestIds = newestKnownEpisodes.filter { it.releaseDate == newestDate }.map { it.url }.toSet()
         val edit = prefs().edit().putBoolean("auto_download:$showId", enabled)
-        if (enabled && newestKnownRelease.isNotBlank()) edit.putString("auto_cursor:$showId", newestKnownRelease)
+        if (enabled && newestDate.isNotBlank()) {
+            edit.putString("auto_cursor:$showId", newestDate)
+            edit.putStringSet("auto_seen:$showId", latestIds)
+        }
         edit.apply()
         tick++
+        com.music.spotui.data.offline.PodcastAutoDownloadScheduler.schedule(Graph.app)
     }
 
-    /** New releases since the last auto-download check. */
+    /** IDs of the shows whose automatic download option is enabled. */
+    fun autoDownloadShowIds(): Set<String> = prefs().all.entries
+        .asSequence()
+        .filter { it.key.startsWith("auto_download:") && it.value == true }
+        .map { it.key.removePrefix("auto_download:") }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+    /** New releases since the last auto-download check, including a second episode dated today. */
     fun autoDownloadCandidates(showId: String, episodes: List<SongsModel>): List<SongsModel> {
         if (!autoDownload(showId) || episodes.isEmpty()) return emptyList()
         val p = prefs()
         val cursor = p.getString("auto_cursor:$showId", "").orEmpty()
+        val seen = p.getStringSet("auto_seen:$showId", emptySet()).orEmpty()
         val dated = episodes.filter { it.isEpisode && it.releaseDate.isNotBlank() }
         if (cursor.isBlank()) {
-            dated.maxOfOrNull { it.releaseDate }?.let { p.edit().putString("auto_cursor:$showId", it).apply() }
+            val newest = dated.maxOfOrNull { it.releaseDate }.orEmpty()
+            if (newest.isNotBlank()) {
+                p.edit().putString("auto_cursor:$showId", newest)
+                    .putStringSet("auto_seen:$showId", dated.filter { it.releaseDate == newest }.map { it.url }.toSet())
+                    .apply()
+            }
             tick++
             return emptyList()
         }
-        val candidates = dated.filter { it.releaseDate > cursor }.sortedBy { it.releaseDate }
+        val candidates = dated.filter {
+            it.releaseDate > cursor || (it.releaseDate == cursor && it.url !in seen)
+        }.sortedBy { it.releaseDate }
         if (candidates.isNotEmpty()) {
-            p.edit().putString("auto_cursor:$showId", candidates.maxOf { it.releaseDate }).apply()
+            val newest = maxOf(cursor, candidates.maxOf { it.releaseDate })
+            val newestIds = dated.filter { it.releaseDate == newest }.map { it.url }.toMutableSet()
+            if (newest == cursor) newestIds.addAll(seen)
+            p.edit().putString("auto_cursor:$showId", newest)
+                .putStringSet("auto_seen:$showId", newestIds)
+                .apply()
             tick++
         }
         return candidates
