@@ -141,6 +141,37 @@ object LocalPlayer {
     /** The main player's listener: it moves to the deck that takes over at an AutoMix (see [takeOver]). */
     private var mainListener: Player.Listener? = null
 
+    private fun podcastEpisodeId(track: LocalTrack?): String? =
+        track?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+            ?.takeIf { it.startsWith("episode:") }
+            ?.removePrefix("episode:")
+            ?.takeIf { it.isNotBlank() }
+
+    private fun savePodcastEpisodePosition(track: LocalTrack?, positionMs: Long) {
+        val episodeId = podcastEpisodeId(track) ?: return
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, positionMs, track.durationMs)
+    }
+
+    /** Restore an episode selected directly from the downloaded/local queue. */
+    private fun resumePodcastEpisodeIfNeeded(p: ExoPlayer) {
+        val track = current() ?: return
+        val episodeId = podcastEpisodeId(track) ?: return
+        val target = com.music.spotui.data.preferences.podcastResumePosition(
+            com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
+            p.currentPosition,
+        ) ?: return
+        val index = p.currentMediaItemIndex
+        handler.postDelayed({
+            if (exo !== p || !active.value || p.currentMediaItemIndex != index || current()?.id != track.id) return@postDelayed
+            val latestTarget = com.music.spotui.data.preferences.podcastResumePosition(
+                com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
+                p.currentPosition,
+            ) ?: return@postDelayed
+            log("podcast: restoring downloaded episode " + episodeId + " at " + latestTarget + " ms")
+            p.seekTo(latestTarget)
+        }, 500L)
+    }
+
     private fun listenerFor(p: ExoPlayer): Player.Listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = publish()
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -173,22 +204,15 @@ object LocalPlayer {
         // Moves the player makes by itself (not a seek, not a song's end): logged, so a song
         // jumping elsewhere shows where it went and why.
         override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
-            if (reason == Player.DISCONTINUITY_REASON_SEEK) { mixMoved(); return }
-            if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
-                // The local player has just reached the end of its previous item. Capture the
-                // old episode's final position before its media item is no longer current.
-                val previous = tracks.getOrNull(old.mediaItemIndex)
-                val episodeId = previous?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
-                    ?.takeIf { it.startsWith("episode:") }
-                    ?.removePrefix("episode:")
-                if (!episodeId.isNullOrBlank() && previous != null) {
-                    com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
-                        episodeId, old.positionMs, previous.durationMs,
-                    )
-                }
-                return
+            // A manual queue skip is a discontinuity too: save the episode being left before the
+            // player's current media item changes.
+            if (old.mediaItemIndex != new.mediaItemIndex) {
+                savePodcastEpisodePosition(tracks.getOrNull(old.mediaItemIndex), old.positionMs)
             }
-            log("moved by the player from ${old.positionMs} to ${new.positionMs} ms (reason $reason), item ${new.mediaItemIndex + 1}")
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) { mixMoved(); return }
+            if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
+            log("moved by the player from " + old.positionMs + " to " + new.positionMs +
+                " ms (reason " + reason + "), item " + (new.mediaItemIndex + 1))
         }
         // The queue grew or shrank: a queue of one song repeated loops it as repeat one does.
         override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) = applyRepeat(p)
@@ -218,6 +242,7 @@ object LocalPlayer {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && wentPastRepeat(p, p.previousMediaItemIndex)) return
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) startsAtZero(p)
             if (skipHidden(p, reason)) return
+            resumePodcastEpisodeIfNeeded(p)
             prefetchNext(p); continueIfLast(p)
         }
 
@@ -486,7 +511,11 @@ object LocalPlayer {
         // Timed (on the main thread, as Media3 wants): a long list's timeline is built here, the
         // hotspot of a 2.3.0 ANR (an audit asked for the measure before any change to it).
         val built = android.os.SystemClock.elapsedRealtime()
-        p.setMediaItems(order.map(::item), if (whole) 0 else start, startMs.coerceAtLeast(0L))
+        val initialIndex = if (whole) 0 else start
+        val savedEpisodePosition = podcastEpisodeId(order.getOrNull(initialIndex))
+            ?.let { com.music.spotui.data.preferences.PodcastPrefs.positionMs(it) } ?: 0L
+        val initialPosition = if (startMs > 0L) startMs else savedEpisodePosition
+        p.setMediaItems(order.map(::item), initialIndex, initialPosition.coerceAtLeast(0L))
         val took = android.os.SystemClock.elapsedRealtime() - built
         if (took >= 50) log("setMediaItems: ${order.size} songs in $took ms")
         p.prepare()
