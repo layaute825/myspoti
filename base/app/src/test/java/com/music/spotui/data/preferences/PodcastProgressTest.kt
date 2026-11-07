@@ -42,4 +42,19 @@ class PodcastProgressTest {
         assertNull(podcastResumePosition(180_000L, 181_000L))
     }
 
+    @Test
+    fun showPageKeepsLocalProgressWhenSpotifyReturnsZero() {
+        assertEquals(180_000L, podcastDisplayedPositionMs(0L, 180_000L, 0L))
+    }
+
+    @Test
+    fun showPageUsesLivePlayerPositionBeforeThePeriodicDiskSnapshot() {
+        assertEquals(180_000L, podcastDisplayedPositionMs(0L, 0L, 180_000L))
+    }
+
+    @Test
+    fun showPageNeverMovesBehindTheNewestKnownProgressSource() {
+        assertEquals(240_000L, podcastDisplayedPositionMs(240_000L, 180_000L, 200_000L))
+    }
+
 }
