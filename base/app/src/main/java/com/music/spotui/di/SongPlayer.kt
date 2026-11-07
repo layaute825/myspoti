@@ -558,17 +558,19 @@ object SongPlayer {
 
             // A 500 ms delay alone is not enough: the Web Player may still be opening the episode.
             // Wait for a non-buffering state for this URI, but remain bounded if Spotify stalls.
-            val readyState = kotlinx.coroutines.withTimeoutOrNull(PODCAST_RESUME_READY_TIMEOUT_MS) {
+            kotlinx.coroutines.withTimeoutOrNull(PODCAST_RESUME_READY_TIMEOUT_MS) {
                 api.player.state.first { state ->
                     state != null && state.item?.uri == uri && !state.isBuffering
                 }
             }
-            if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri)) return@launch
+            // The player may have moved on while the readiness wait was suspended.
+            if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri) ||
+                api.player.state.value?.item?.uri != uri) return@launch
 
             // Re-read both the target and the player's state: an older callback must never undo a
             // newer manual seek, and an already-landed start position must not be sought again.
             val latestTarget = requestedPosition()
-            val currentState = api.player.state.value?.takeIf { it.item?.uri == uri } ?: readyState
+            val currentState = api.player.state.value?.takeIf { it.item?.uri == uri }
                 ?: return@launch
             // Never compare against SongPlayer's old clock: during a URI hand-off it may still
             // describe the episode that was just left.
