@@ -499,7 +499,7 @@ object SongPlayer {
         val uri = _nowPlaying.value.uri
         if (!uri.startsWith("spotify:episode:")) return
         val id = uri.removePrefix("spotify:episode:")
-        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), durationMs)
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), getDuration())
     }
 
     private val savePosition = object : Runnable {
