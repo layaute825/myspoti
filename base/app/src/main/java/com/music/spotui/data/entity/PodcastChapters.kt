@@ -1,19 +1,35 @@
 package com.music.spotui.data.entity
 
-/** A timestamped chapter supplied in the podcast's episode description. */
-data class PodcastChapter(val positionMs: Long, val title: String)
+/** Where a chapter heading came from. Spotify transcript headings take precedence over show notes. */
+enum class PodcastChapterSource { SPOTIFY_TRANSCRIPT, DESCRIPTION }
+
+/** A timestamped and seekable podcast chapter. */
+data class PodcastChapter(
+    val positionMs: Long,
+    val title: String,
+    val source: PodcastChapterSource = PodcastChapterSource.DESCRIPTION,
+)
 
 /**
- * Extract publisher-provided chapter timestamps from common show-note formats:
- *   00:00 Introduction
- *   12:34 - Interview
- *   [1:02:03] Conclusion
+ * Extract publisher-provided chapter timestamps from common show-note formats, including Spotify's
+ * documented (MM:SS) / (HH:MM:SS) syntax, square brackets, bullets and HTML line breaks.
  *
- * This deliberately does not invent chapters when no timestamps are published.
+ * The parser intentionally does not interpret arbitrary timestamps embedded in prose as chapters.
  */
 fun parsePodcastChapters(description: String): List<PodcastChapter> {
-    val line = Regex("""(?m)^[ \t]*(?:[-•*][ \t]*)?\[?((?:\d{1,2}:)?\d{1,2}:\d{2})\]?[ \t]*(?:[-–—|:][ \t]*)?([^\r\n]+?)[ \t]*$""")
-    return line.findAll(description).mapNotNull { match ->
+    val text = description
+        .replace(Regex("(?i)<br\\s*/?>|</p\\s*>|</div\\s*>|</li\\s*>"), "\n")
+        .replace(Regex("<[^>]+>"), "")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+    val line = Regex(
+        """(?m)^[ \\t]*(?:[-•*][ \\t]*)?[\\[(]?((?:\\d{1,2}:)?\\d{1,2}:\\d{2})[\\])]?[  \\t]*(?:[-–—|:][ \\t]*)?([^\\r\\n]+?)[ \\t]*$""",
+    )
+    return line.findAll(text).mapNotNull { match ->
         val time = match.groupValues[1].split(':').mapNotNull { it.toLongOrNull() }
         val title = match.groupValues[2].trim().trim('-', '–', '—', '|', ':').trim()
         if (time.size !in 2..3 || title.isBlank()) return@mapNotNull null

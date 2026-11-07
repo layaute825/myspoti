@@ -3156,6 +3156,16 @@ object SongPlayer {
     }
 
     fun isPlaying(): Boolean = if (LocalPlayer.active.value && !routing) LocalPlayer.isPlaying() else playing
+
+    /** True for both Spotify-streamed and locally downloaded copies of this podcast episode. */
+    fun isEpisodeCurrent(episodeId: String): Boolean {
+        if (episodeId.isBlank()) return false
+        if (_nowPlaying.value.uri == "spotify:episode:$episodeId") return true
+        if (!LocalPlayer.active.value || routing) return false
+        val track = LocalPlayer.current() ?: return false
+        return com.music.spotui.data.offline.OfflineStore.byLocalId(track.id)?.trackId == "episode:$episodeId"
+    }
+
     fun getDuration(): Long = if (LocalPlayer.active.value && !routing) LocalPlayer.duration() else durationMs
 
     fun getCurrentPosition(): Long {

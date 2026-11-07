@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -137,7 +140,7 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
         Box(Modifier.fillMaxSize().background(Immersive.Page)) {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = Immersive.BottomChrome),
+                contentPadding = PaddingValues(\n                    bottom = Immersive.BottomChrome + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp,\n                ),
                 modifier = Modifier.fillMaxSize().immersiveHazeSource(),
             ) {
                 item(key = "header") {
@@ -221,7 +224,7 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
                     com.music.spotui.ui.components.SwipeToQueue(song = ep) {
                     ImmersiveEpisodeRow(
                         episode = ep,
-                        playing = np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" && SongPlayer.isPlaying(),
+                        playing = SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:")) && SongPlayer.isPlaying(),
                         finished = vm.isFinished(ep),
                         isNew = vm.isNew(ep),
                         onPlay = {

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.spotui.data.api.Api
 import com.music.spotui.data.entity.SongsModel
+import app.myspoti.api.EpisodeChapter
 import com.music.spotui.di.Graph
 import com.music.spotui.di.SongPlayer
 import com.music.spotui.ui.repository.AppRepository
@@ -22,6 +23,11 @@ class EpisodeViewModel constructor(
     private val _episode = MutableStateFlow<SongsModel?>(null)
     val episode: StateFlow<SongsModel?> = _episode
 
+    private val _chapters = MutableStateFlow<List<EpisodeChapter>>(emptyList())
+    /** Spotify transcript headings (not merely timestamps copied into the description). */
+    val chapters: StateFlow<List<EpisodeChapter>> = _chapters
+    val chaptersLoading = mutableStateOf(false)
+
     /** False once Spotify answered nothing: the page says so instead of staying empty. */
     val failed = mutableStateOf(false)
 
@@ -35,6 +41,11 @@ class EpisodeViewModel constructor(
     fun load(episodeId: String) {
         if (key == episodeId) return
         key = episodeId
+        _episode.value = null
+        _chapters.value = emptyList()
+        chaptersLoading.value = true
+        loading.value = true
+        failed.value = false
         viewModelScope.launch(Dispatchers.IO) {
             val loaded = runCatching { repository.provideEpisode(episodeId) }.getOrNull()
             kotlinx.coroutines.withContext(Dispatchers.Main) {
@@ -47,6 +58,22 @@ class EpisodeViewModel constructor(
                 }
             }
         }
+        // Spotify's transcript-read-along endpoint is separate from the description and
+        // contains auto-generated chapter headings when this episode has a transcript.
+        viewModelScope.launch(Dispatchers.IO) {
+            val chapters = try {
+                api.getEpisodeChapters(episodeId)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                _chapters.value = chapters
+                chaptersLoading.value = false
+            }
+        }
+
         // The page's own "markedasfinished" set wins over the playedState when it holds the id.
         viewModelScope.launch(Dispatchers.IO) {
             val uri = "spotify:episode:$episodeId"
