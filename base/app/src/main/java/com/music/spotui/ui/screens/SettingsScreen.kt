@@ -362,7 +362,7 @@ fun SettingsScreen(navController: NavController) {
                 label = stringResource(R.string.podcast_delete_after_finish),
                 detail = stringResource(R.string.podcast_delete_after_finish_detail),
                 checked = com.music.spotui.data.preferences.PodcastPrefs.deleteAfterFinish,
-                onChecked = com.music.spotui.data.preferences.PodcastPrefs::setDeleteAfterFinish,
+                onChecked = com.music.spotui.data.preferences.PodcastPrefs::updateDeleteAfterFinish,
             )
             // What the app keeps on the phone: the caches (emptied here) and the downloads.
             Section(R.string.settings_section_storage)

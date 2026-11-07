@@ -49,7 +49,7 @@ object PodcastPrefs {
     var deleteAfterFinish by mutableStateOf(prefs().getBoolean("delete_episode_after_finish", false))
         private set
 
-    fun setDeleteAfterFinish(value: Boolean) {
+    fun updateDeleteAfterFinish(value: Boolean) {
         deleteAfterFinish = value
         prefs().edit().putBoolean("delete_episode_after_finish", value).apply()
         tick++

@@ -692,7 +692,7 @@ private fun DownloadsPage(navController: NavController, open: (SettingsPage) -> 
                 ImmersiveSwitchRow(
                     stringResource(R.string.podcast_delete_after_finish),
                     checked = com.music.spotui.data.preferences.PodcastPrefs.deleteAfterFinish,
-                    onChecked = com.music.spotui.data.preferences.PodcastPrefs::setDeleteAfterFinish,
+                    onChecked = com.music.spotui.data.preferences.PodcastPrefs::updateDeleteAfterFinish,
                     detail = stringResource(R.string.podcast_delete_after_finish_detail),
                 )
             }
