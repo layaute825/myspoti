@@ -569,7 +569,10 @@ object SongPlayer {
             // newer manual seek, and an already-landed start position must not be sought again.
             val latestTarget = requestedPosition()
             val currentState = api.player.state.value?.takeIf { it.item?.uri == uri } ?: readyState
-            val actualPosition = currentState?.positionAt(System.currentTimeMillis()) ?: getCurrentPosition()
+                ?: return@launch
+            // Never compare against SongPlayer's old clock: during a URI hand-off it may still
+            // describe the episode that was just left.
+            val actualPosition = currentState.positionAt(System.currentTimeMillis())
             val correction = com.music.spotui.data.preferences.podcastResumePosition(latestTarget, actualPosition)
                 ?: return@launch
             if (seekHeld(uri)) return@launch
@@ -626,6 +629,9 @@ object SongPlayer {
         pendingTrackId = null
         pendingItemUri = null
         pendingUntil = 0L
+        explicitlyStartedEpisodeUri = ""
+        explicitlyStartedEpisodeUntil = 0L
+        explicitlyStartedEpisodePositionMs = -1L
         intentUri = ""; intentUntil = 0L
         wantPlayingUntil = 0L; wantPausedUntil = 0L
         // Its own end puts nothing back on screen: the seq it ends with is no longer the last.
