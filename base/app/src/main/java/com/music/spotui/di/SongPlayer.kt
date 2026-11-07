@@ -1335,6 +1335,11 @@ object SongPlayer {
         songs: List<SongsModel>? = null, askExtensions: Boolean = true, alone: Boolean = false,
     ) {
         userActed()
+        // A newer play request cancels any start-position correction still waiting for the
+        // previous episode to appear in Spotify's state stream.
+        explicitlyStartedEpisodeUri = ""
+        explicitlyStartedEpisodeUntil = 0L
+        explicitlyStartedEpisodePositionMs = -1L
         saveCurrentEpisodeProgress()
         // Data saver on mobile data: Spotify can't stream, only downloads and Local Files play.
         if (com.music.spotui.data.DataSaver.active) {
