@@ -44,7 +44,7 @@ class PodcastProgressTest {
 
     @Test
     fun showPageKeepsLocalProgressWhenSpotifyReturnsZero() {
-        assertEquals(180_000L, podcastDisplayedPositionMs(0L, 180_000L, 0L))
+        assertEquals(180_000L, podcastDisplayedPositionMs(0L, 180_000L, 0L, preferLocalSnapshot = true))
     }
 
     @Test
