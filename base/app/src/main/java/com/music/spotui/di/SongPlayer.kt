@@ -495,6 +495,13 @@ object SongPlayer {
      * track changes and play/pause only, an app closed mid-song resumed it from its start (reported
      * with an extension's song after a relaunch).
      */
+    private fun saveCurrentEpisodeProgress() {
+        val uri = _nowPlaying.value.uri
+        if (!uri.startsWith("spotify:episode:")) return
+        val id = uri.removePrefix("spotify:episode:")
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), durationMs)
+    }
+
     private val savePosition = object : Runnable {
         override fun run() {
             main.postDelayed(this, POSITION_SAVE_MS)
@@ -503,7 +510,13 @@ object SongPlayer {
             val uri = p.getString("uri", "").orEmpty()
             val now = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
             if (uri.isBlank() || uri != now) return
-            p.edit().putLong("position", getCurrentPosition()).apply()
+            val position = getCurrentPosition()
+            p.edit().putLong("position", position).apply()
+            if (now.startsWith("spotify:episode:")) {
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                    now.removePrefix("spotify:episode:"), position, getDuration(),
+                )
+            }
         }
     }
     init { main.postDelayed(savePosition, POSITION_SAVE_MS) }
@@ -1205,6 +1218,7 @@ object SongPlayer {
         songs: List<SongsModel>? = null, askExtensions: Boolean = true, alone: Boolean = false,
     ) {
         userActed()
+        saveCurrentEpisodeProgress()
         // Data saver on mobile data: Spotify can't stream, only downloads and Local Files play.
         if (com.music.spotui.data.DataSaver.active) {
             main.post {
@@ -1779,6 +1793,7 @@ object SongPlayer {
     /** [send] false: the engine has paused already (the sleep timer's fade). */
     private fun pauseSilently(send: Boolean = true) {
         if (LocalPlayer.active.value) { LocalPlayer.pause(); return }
+        saveCurrentEpisodeProgress()
         intendPaused()
         positionMs = getCurrentPosition(); positionAt = SystemClock.elapsedRealtime(); playing = false
         if (send) { transport(pullBack = false) { api.player.pause() }; jamFollowUp(wantPaused = true) }
