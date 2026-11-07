@@ -583,7 +583,7 @@ object SongPlayer {
         }
     }
 
-    private fun resumeSavedPodcastEpisode(uri: String, reportedPositionMs: Long) {
+    private fun resumeSavedPodcastEpisode(uri: String) {
         val episodeId = uri.removePrefix("spotify:episode:")
         val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
         if (saved <= 2_000L) return
@@ -868,7 +868,7 @@ object SongPlayer {
                 // Spotify occasionally ignores the position passed to play() and opens at 0:00.
                 restorePodcastEpisodePosition(uri, { explicitStart }, "requested")
             } else {
-                resumeSavedPodcastEpisode(uri, reported)
+                resumeSavedPodcastEpisode(uri)
             }
         }
         // Started or moved on without Myspoti asking (another device, a transfer back here): the
