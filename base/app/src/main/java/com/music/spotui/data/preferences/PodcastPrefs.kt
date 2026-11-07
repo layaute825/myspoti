@@ -138,24 +138,47 @@ object PodcastPrefs {
         return p.getLong("episode_position:$episodeId", 0L).coerceAtLeast(0L)
     }
 
+    /** True when this phone already has a snapshot, including an intentional reset to 0:00. */
+    fun hasStoredProgress(episodeId: String): Boolean {
+        if (episodeId.isBlank()) return false
+        val p = prefs()
+        return p.contains("episode_position:$episodeId") ||
+            p.getBoolean("episode_completed:$episodeId", false)
+    }
+
     /**
-     * Persist independent episode progress. A completed episode clears its resume point and,
-     * when requested, removes its downloaded copy exactly once.
+     * Persist independent episode progress. Older Spotify/player snapshots are ignored instead
+     * of replacing a newer local position. Only an explicit seek or replay may move it backwards.
+     * A completed episode clears its resume point and, when requested, removes its download once.
      */
-    fun saveProgress(episodeId: String, positionMs: Long, durationMs: Long) {
+    @Synchronized
+    fun saveProgress(
+        episodeId: String,
+        positionMs: Long,
+        durationMs: Long,
+        allowRewind: Boolean = false,
+    ) {
         if (episodeId.isBlank() || positionMs < 0L) return
         val p = prefs()
         val wasCompleted = p.getBoolean("episode_completed:$episodeId", false)
         val complete = durationMs > 0L && positionMs >= (durationMs - 1_000L).coerceAtLeast(0L)
+        if (!complete && wasCompleted && !allowRewind) return
+
+        val persistedPosition = if (complete) 0L else {
+            podcastProgressToPersist(
+                previousPositionMs = p.getLong("episode_position:$episodeId", 0L).coerceAtLeast(0L),
+                incomingPositionMs = positionMs,
+                allowRewind = allowRewind,
+            ) ?: return
+        }
+
         p.edit().apply {
             if (complete) {
                 putBoolean("episode_completed:$episodeId", true)
                 putLong("episode_position:$episodeId", 0L)
             } else {
-                // A replay from the queue may not pass through the episode page's reset action.
-                // The first partial position therefore clears the completion marker itself.
                 remove("episode_completed:$episodeId")
-                putLong("episode_position:$episodeId", positionMs)
+                putLong("episode_position:$episodeId", persistedPosition)
             }
         }.apply()
         tick++
