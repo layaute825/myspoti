@@ -101,9 +101,10 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
     val audiobook = page?.audiobook == true
     val items = page?.items.orEmpty().map { episode ->
         if (episode.isEpisode) episode.copy(
-            playedPositionMs = maxOf(
-                episode.playedPositionMs,
-                SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
+            playedPositionMs = com.music.spotui.data.preferences.podcastDisplayedPositionMs(
+                serverPositionMs = episode.playedPositionMs,
+                savedPositionMs = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episode.url.removePrefix("episode:")),
+                livePositionMs = SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
             ),
         ) else episode
     }
