@@ -33,9 +33,9 @@ internal fun podcastResumePosition(
 
 
 /**
- * The progress shown for an episode must never move backwards just because Spotify's show-page
- * response is stale. The server, local durable snapshot, and current player clock are all valid
- * sources; the furthest known non-negative position wins.
+ * Spotify's show-page position is a fallback until this phone has a durable snapshot for the
+ * episode. Once a local snapshot exists, it is authoritative (including a deliberate rewind);
+ * the active player's clock can still advance what is displayed.
  */
 internal fun podcastDisplayedPositionMs(
     serverPositionMs: Long,
