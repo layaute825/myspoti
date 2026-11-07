@@ -536,41 +536,78 @@ object SongPlayer {
     init { main.postDelayed(savePosition, POSITION_SAVE_MS) }
 
     private const val PODCAST_RESUME_DELAY_MS = 500L
+    private const val PODCAST_RESUME_READY_TIMEOUT_MS = 10_000L
 
     @Volatile private var explicitlyStartedEpisodeUri = ""
     @Volatile private var explicitlyStartedEpisodeUntil = 0L
+    @Volatile private var explicitlyStartedEpisodePositionMs = -1L
 
-    private fun resumeSavedPodcastEpisode(uri: String, reportedPositionMs: Long) {
-        val episodeId = uri.removePrefix("spotify:episode:")
-        val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
-        if (com.music.spotui.data.preferences.podcastResumePosition(saved, reportedPositionMs) == null) return
+    /**
+     * Spotify can acknowledge play(uri, positionMs) while its Web Player still starts the media
+     * item at 0:00. Do not assume that asking for a position means that it was actually applied:
+     * wait until this exact episode is ready, compare its real position with the requested one,
+     * then repair it through the same verified seek path used by the seek bar.
+     */
+    private fun restorePodcastEpisodePosition(uri: String, requestedPosition: () -> Long, source: String) {
+        val initialTarget = requestedPosition()
+        if (com.music.spotui.data.preferences.podcastResumePosition(initialTarget, 0L) == null) return
 
         scope.launch {
             kotlinx.coroutines.delay(PODCAST_RESUME_DELAY_MS)
             if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri)) return@launch
 
-            // Re-read after the player settles so an old state event cannot override a newer seek.
-            val latest = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
-            val target = com.music.spotui.data.preferences.podcastResumePosition(latest, getCurrentPosition())
+            // A 500 ms delay alone is not enough: the Web Player may still be opening the episode.
+            // Wait for a non-buffering state for this URI, but remain bounded if Spotify stalls.
+            val readyState = kotlinx.coroutines.withTimeoutOrNull(PODCAST_RESUME_READY_TIMEOUT_MS) {
+                api.player.state.first { state ->
+                    state?.item?.uri == uri && !state.isBuffering
+                }
+            }
+            if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri)) return@launch
+
+            // Re-read both the target and the player's state: an older callback must never undo a
+            // newer manual seek, and an already-landed start position must not be sought again.
+            val latestTarget = requestedPosition()
+            val currentState = api.player.state.value?.takeIf { it.item?.uri == uri } ?: readyState
+            val actualPosition = currentState?.positionAt(System.currentTimeMillis()) ?: getCurrentPosition()
+            val correction = com.music.spotui.data.preferences.podcastResumePosition(latestTarget, actualPosition)
                 ?: return@launch
             if (seekHeld(uri)) return@launch
 
-            app.myspoti.host.android.Logbook.log("podcast: restoring episode " + episodeId + " at " + target + " ms")
-            seekTo(target)
+            app.myspoti.host.android.Logbook.log(
+                "podcast: correcting $source start for " + uri.removePrefix("spotify:episode:") +
+                    " from " + actualPosition + " ms to " + correction + " ms",
+            )
+            // seekTo retries and checks the Web Player response; this is not a fire-and-forget seek.
+            seekTo(correction)
         }
     }
 
-    private fun consumeExplicitEpisodeStart(uri: String): Boolean {
+    private fun resumeSavedPodcastEpisode(uri: String, reportedPositionMs: Long) {
+        val episodeId = uri.removePrefix("spotify:episode:")
+        val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        if (com.music.spotui.data.preferences.podcastResumePosition(saved, reportedPositionMs) == null) return
+        restorePodcastEpisodePosition(
+            uri = uri,
+            requestedPosition = { com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId) },
+            source = "saved",
+        )
+    }
+
+    private fun consumeExplicitEpisodeStart(uri: String): Long? {
         val now = SystemClock.elapsedRealtime()
         if (now > explicitlyStartedEpisodeUntil) {
             explicitlyStartedEpisodeUri = ""
             explicitlyStartedEpisodeUntil = 0L
-            return false
+            explicitlyStartedEpisodePositionMs = -1L
+            return null
         }
-        if (uri != explicitlyStartedEpisodeUri) return false
+        if (uri != explicitlyStartedEpisodeUri) return null
+        val position = explicitlyStartedEpisodePositionMs.takeIf { it >= 0L }
         explicitlyStartedEpisodeUri = ""
         explicitlyStartedEpisodeUntil = 0L
-        return true
+        explicitlyStartedEpisodePositionMs = -1L
+        return position
     }
 
     private fun acceptsSessionUpdates() = Graph.app.getSharedPreferences("myspoti_prefs", Context.MODE_PRIVATE)
@@ -822,8 +859,15 @@ object SongPlayer {
             prev = s.previous?.let(::songOf),
             next = s.next?.let(::songOf),
         )
-        if (trackChanged && uri.startsWith("spotify:episode:") && !consumeExplicitEpisodeStart(uri)) {
-            resumeSavedPodcastEpisode(uri, reported)
+        if (trackChanged && uri.startsWith("spotify:episode:")) {
+            val explicitStart = consumeExplicitEpisodeStart(uri)
+            if (explicitStart != null) {
+                // Even explicit podcast starts (saved progress or a chapter tap) are verified:
+                // Spotify occasionally ignores the position passed to play() and opens at 0:00.
+                restorePodcastEpisodePosition(uri, { explicitStart }, "requested")
+            } else {
+                resumeSavedPodcastEpisode(uri, reported)
+            }
         }
         // Started or moved on without Myspoti asking (another device, a transfer back here): the
         // Connect mirror sends it back through the extensions. After this state's own follow-ups.
@@ -1316,6 +1360,7 @@ object SongPlayer {
         if (episodeId != null && requestedPositionMs != null) {
             explicitlyStartedEpisodeUri = itemUri
             explicitlyStartedEpisodeUntil = SystemClock.elapsedRealtime() + 30_000L
+            explicitlyStartedEpisodePositionMs = requestedPositionMs
         }
         val ctx = if (alone) null else contextUri ?: contextRegistry[song]
         // What a smart shuffle ending brings back: the order of the last play that was not one.
