@@ -255,13 +255,15 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                 )
             }
             episode?.let { ep ->
-                if (ep.playedPositionMs > 0 && !finished) item {
+                val localPosition = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+                val resumePosition = maxOf(ep.playedPositionMs, localPosition)
+                if (resumePosition > 0L && !finished) item {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     ) {
                         Text(
-                            stringResource(R.string.episode_remaining, episodeClock(ep.durationMs - ep.playedPositionMs)),
+                            stringResource(R.string.episode_remaining, episodeClock((ep.durationMs.toLong() - resumePosition).coerceAtLeast(0L))),
                             color = AppAccent,
                             fontSize = 12.sp,
                         )
