@@ -149,7 +149,7 @@ object LocalPlayer {
 
     private fun savePodcastEpisodePosition(track: LocalTrack?, positionMs: Long) {
         val episodeId = podcastEpisodeId(track) ?: return
-        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, positionMs, track.durationMs)
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, positionMs, track?.durationMs ?: 0L)
     }
 
     /** Restore an episode selected directly from the downloaded/local queue. */
