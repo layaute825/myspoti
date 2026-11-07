@@ -140,7 +140,9 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
         Box(Modifier.fillMaxSize().background(Immersive.Page)) {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(\n                    bottom = Immersive.BottomChrome + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp,\n                ),
+                contentPadding = PaddingValues(
+                    bottom = Immersive.BottomChrome + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp,
+                ),
                 modifier = Modifier.fillMaxSize().immersiveHazeSource(),
             ) {
                 item(key = "header") {

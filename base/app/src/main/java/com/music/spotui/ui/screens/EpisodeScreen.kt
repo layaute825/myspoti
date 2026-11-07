@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -91,7 +92,7 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
     var expanded by remember { mutableStateOf(false) }
     val np by SongPlayer.nowPlaying
     val uri = "spotify:episode:$episodeId"
-    val playing = np.uri == uri && SongPlayer.isPlaying()
+    val playing = SongPlayer.isEpisodeCurrent(episodeId) && SongPlayer.isPlaying()
     val saved = SongPlayer.library[uri] == true
 
     fun play() {
@@ -223,7 +224,7 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                             SongPlayer.setSaved(ep.spotifyUri, !saved)
                         }
                         Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                            episode?.let { EpisodeDownloadButton(it, size = 24.dp) }
+                            episode?.let { EpisodeDownloadButton(it, size = 30.dp) }
                         }
                         Box(
                             modifier = Modifier.size(44.dp).clip(CircleShape).clickable {

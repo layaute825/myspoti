@@ -27,7 +27,7 @@ fun parsePodcastChapters(description: String): List<PodcastChapter> {
         .replace("&lt;", "<")
         .replace("&gt;", ">")
     val line = Regex(
-        """(?m)^[ \\t]*(?:[-•*][ \\t]*)?[\\[(]?((?:\\d{1,2}:)?\\d{1,2}:\\d{2})[\\])]?[  \\t]*(?:[-–—|:][ \\t]*)?([^\\r\\n]+?)[ \\t]*$""",
+        """(?m)^[ \t]*(?:[-•*][ \t]*)?[\[(]?((?:\d{1,2}:)?\d{1,2}:\d{2})[\])]?[ \t]*(?:[-–—|:][ \t]*)?([^\r\n]+?)[ \t]*$""",
     )
     return line.findAll(text).mapNotNull { match ->
         val time = match.groupValues[1].split(':').mapNotNull { it.toLongOrNull() }
