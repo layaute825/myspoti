@@ -873,6 +873,12 @@ object SongPlayer {
             next = s.next?.let(::songOf),
         )
         if (trackChanged && uri.startsWith("spotify:episode:")) {
+            val episodeId = uri.removePrefix("spotify:episode:")
+            // Reaching a completed episode again from Spotify's queue is a real replay. Clear the
+            // local completion marker now that this episode has actually become the playing item.
+            if (playing && com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+            }
             val explicitStart = consumeExplicitEpisodeStart(uri)
             if (explicitStart != null) {
                 // An explicit start can be a deliberate rewind (for example, tapping an earlier
