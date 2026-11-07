@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -197,7 +198,9 @@ fun PodcastPlayerScreen(navController: NavController) {
             .graphicsLayer { translationY = pullToClose.offset }
             .background(Brush.verticalGradient(listOf(tint, AppBackground))),
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        // The sheet is edge-to-edge: keep the transport and Connect row above both gesture and
+        // three-button navigation bars, while the background continues behind the system area.
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // Top bar: down chevron, "playing from the podcast", the episode's own menu.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
