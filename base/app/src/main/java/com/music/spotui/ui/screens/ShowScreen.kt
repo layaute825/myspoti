@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
@@ -92,7 +93,11 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
     val page = (pageState as? Response.Success)?.data
     val show = page?.show
     val audiobook = page?.audiobook == true
-    val items = page?.items.orEmpty()
+    val items = page?.items.orEmpty().map { episode ->
+        if (episode.isEpisode) episode.copy(
+            playedPositionMs = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episode.url.removePrefix("episode:")),
+        ) else episode
+    }
 
     var tab by remember { mutableStateOf(0) }
     var oldestFirst by remember { mutableStateOf(false) }
@@ -102,7 +107,12 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
     fun playAt(index: Int) {
         val song = items.getOrNull(index) ?: return
         vm.updateQueue(items)
-        SongPlayer.playSong(song.url, context, contextUri = "spotify:show:$showId")
+        val episodeId = song.url.removePrefix("episode:")
+        val resumeAt = if (song.isEpisode) com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId) else 0L
+        if (song.isEpisode && com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+        }
+        SongPlayer.playSong(song.url, context, contextUri = "spotify:show:$showId", positionMs = resumeAt.takeIf { it > 0L })
         vm.updateSongState(song.coverUri, song.title, song.singer, true, song.id, index, song.album)
     }
 
@@ -138,6 +148,9 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                     cover = page?.coverUri.orEmpty(),
                     audiobook = audiobook,
                     following = vm.following.value,
+                    autoDownload = vm.autoDownload.value,
+                    showAutoDownload = !audiobook,
+                    onAutoDownload = { vm.setAutoDownload(showId, it) },
                     onFollow = { vm.setFollow(showId, it) },
                 )
             }
@@ -217,6 +230,7 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                 )
             }
             if (tab == 0) items(rows, key = { it.url }) { ep ->
+                com.music.spotui.ui.components.SwipeToQueue(song = ep) {
                 EpisodeRow(
                     episode = ep,
                     playing = np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" && SongPlayer.isPlaying(),
@@ -229,6 +243,7 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                     onOpen = { navController.navigate(episodeRoute(ep.url.removePrefix("episode:"), ep.title)) },
                     onMenu = { menuSong = ep },
                 )
+                }
             }
         }
     }
@@ -243,6 +258,9 @@ private fun Header(
     cover: String,
     audiobook: Boolean,
     following: Boolean,
+    autoDownload: Boolean,
+    showAutoDownload: Boolean,
+    onAutoDownload: (Boolean) -> Unit,
     onFollow: (Boolean) -> Unit,
 ) {
     Column(
@@ -319,6 +337,33 @@ private fun Header(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             FollowPill(following) { onFollow(!following) }
+            if (showAutoDownload) {
+                Spacer(Modifier.width(8.dp))
+                AutoDownloadPill(autoDownload) { onAutoDownload(!autoDownload) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoDownloadPill(enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.height(32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (enabled) AppAccent else AppText.copy(alpha = 0.10f))
+            .pressable(0.96f, onClick = onClick)
+            .padding(horizontal = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Download, contentDescription = null,
+                tint = if (enabled) Color.Black else AppText, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = stringResource(if (enabled) R.string.podcast_auto_download_on else R.string.podcast_auto_download_off),
+                color = if (enabled) Color.Black else AppText,
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            )
         }
     }
 }

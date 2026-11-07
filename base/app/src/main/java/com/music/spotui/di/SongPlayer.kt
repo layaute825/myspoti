@@ -726,8 +726,16 @@ object SongPlayer {
             positionMs = reported
             positionAt = SystemClock.elapsedRealtime()
         }
-        val leftId = trackIdOf(_nowPlaying.value.uri)
-        val trackChanged = uri != _nowPlaying.value.uri
+        val previousUri = _nowPlaying.value.uri
+        val leftId = trackIdOf(previousUri)
+        val trackChanged = uri != previousUri
+        // Save this episode before the player replaces its duration and position with the next item.
+        // Natural completion reaches the duration; an intentional Next preserves partial progress.
+        if (trackChanged && previousUri.startsWith("spotify:episode:")) {
+            com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                previousUri.removePrefix("spotify:episode:"), predicted, lengthBefore,
+            )
+        }
         // Repeat once on a Spotify song: the page's repeat-track loops for good. The page seen
         // starting the song again is its one replay: repeat goes off there, and that replay ends
         // into the next song. Another song under repeat-track (a skip, a pick) cancels it.

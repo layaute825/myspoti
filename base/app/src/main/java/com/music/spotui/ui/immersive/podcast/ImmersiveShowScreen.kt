@@ -102,7 +102,11 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
     fun playAt(index: Int) {
         val song = items.getOrNull(index) ?: return
         vm.updateQueue(items)
-        val resumeAt = if (song.isEpisode) com.music.spotui.data.preferences.PodcastPrefs.positionMs(song.url.removePrefix("episode:")) else 0L
+        val episodeId = song.url.removePrefix("episode:")
+        val resumeAt = if (song.isEpisode) com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId) else 0L
+        if (song.isEpisode && com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+        }
         SongPlayer.playSong(song.url, context, contextUri = "spotify:show:$showId", positionMs = resumeAt.takeIf { it > 0L })
         vm.updateSongState(song.coverUri, song.title, song.singer, true, song.id, index, song.album)
     }

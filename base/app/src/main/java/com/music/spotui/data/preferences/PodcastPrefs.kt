@@ -91,6 +91,12 @@ object PodcastPrefs {
         return candidates
     }
 
+    fun isCompleted(episodeId: String): Boolean {
+        if (episodeId.isBlank()) return false
+        @Suppress("UNUSED_VARIABLE") val read = tick
+        return prefs().getBoolean("episode_completed:$episodeId", false)
+    }
+
     /** Last listened position for this episode (ms); completed episodes start from the beginning. */
     fun positionMs(episodeId: String): Long {
         if (episodeId.isBlank()) return 0L
@@ -108,7 +114,7 @@ object PodcastPrefs {
         if (episodeId.isBlank() || positionMs < 0L) return
         val p = prefs()
         val wasCompleted = p.getBoolean("episode_completed:$episodeId", false)
-        val complete = durationMs > 0L && positionMs >= (durationMs - 10_000L).coerceAtLeast(0L)
+        val complete = durationMs > 0L && positionMs >= (durationMs - 1_000L).coerceAtLeast(0L)
         p.edit().apply {
             if (complete) {
                 putBoolean("episode_completed:$episodeId", true)
