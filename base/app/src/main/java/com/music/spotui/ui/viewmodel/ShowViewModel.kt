@@ -83,10 +83,25 @@ class ShowViewModel constructor(
         autoDownload.value = PodcastPrefs.autoDownload(showId)
         viewModelScope.launch(Dispatchers.IO) {
             repository.provideShowPage(showId).collect { response ->
+                // Spotify's show page may already include a played position for each row. Import
+                // it only when this phone has no snapshot: after that, local progress (including
+                // an intentional reset) is the offline source of truth and stale cloud data must
+                // not move it forwards or backwards.
+                val loaded = (response as? Response.Success)?.data
+                if (loaded != null && !loaded.audiobook) {
+                    loaded.items.filter { it.isEpisode && it.playedPositionMs > 0L }.forEach { episode ->
+                        val episodeId = episode.url.removePrefix("episode:")
+                        if (!PodcastPrefs.hasStoredProgress(episodeId)) {
+                            PodcastPrefs.saveProgress(
+                                episodeId, episode.playedPositionMs, episode.durationMs.toLong(),
+                            )
+                        }
+                    }
+                }
                 _page.value = response
                 // A failed page may be loaded again (Try again, or opening it anew).
                 if (response is Response.Error) showKey = null
-                val loaded = (response as? Response.Success)?.data ?: return@collect
+                if (loaded == null) return@collect
                 following.value = loaded.show.saved || SongPlayer.library["spotify:show:$showId"] == true
                 if (!loaded.audiobook && loaded.items.isNotEmpty()) {
                     val newest = loaded.items.maxOf { it.releaseDate }
