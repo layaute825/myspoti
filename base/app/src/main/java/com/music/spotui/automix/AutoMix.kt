@@ -136,7 +136,7 @@ object AutoMix {
      */
     fun settings() = MixPlanner.Settings(
         maxStretch = doubleArrayOf(0.04, 0.12, 0.16)[tempoRange],
-        maxSec = if (mixLength == 2) 90.0 else 48.0,
+        maxSec = maxOf(if (mixLength == 2) 90.0 else 48.0, blendBars * 4.0),
         lengthBias = mixLength - 1,
         style = arrayOf(MixPlan.Style.BLEND, MixPlan.Style.CUT, MixPlan.Style.FADE)[style],
         minBars = minOf(intArrayOf(4, 8, 12)[mixLength], blendBars),

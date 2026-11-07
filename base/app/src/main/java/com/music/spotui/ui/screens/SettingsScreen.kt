@@ -750,6 +750,15 @@ private fun TransitionsRow() {
         Choices(R.string.settings_automix_length, R.string.settings_automix_length_detail,
             listOf(R.string.settings_automix_length_short, R.string.settings_automix_length_auto, R.string.settings_automix_length_long),
             automix.mixLength, automix::changeMixLength)
+        Choices(R.string.settings_automix_blend_bars, R.string.settings_automix_blend_bars_detail,
+            listOf(
+                R.string.settings_automix_blend_bars_4,
+                R.string.settings_automix_blend_bars_8,
+                R.string.settings_automix_blend_bars_16,
+                R.string.settings_automix_blend_bars_32,
+            ),
+            listOf(4, 8, 16, 32).indexOf(automix.blendBars).coerceAtLeast(0),
+            { automix.changeBlendBars(listOf(4, 8, 16, 32)[it]) })
         Choices(R.string.settings_automix_tempo, R.string.settings_automix_tempo_detail,
             listOf(R.string.settings_automix_tempo_strict, R.string.settings_automix_tempo_normal, R.string.settings_automix_tempo_wide),
             automix.tempoRange, automix::changeTempoRange)

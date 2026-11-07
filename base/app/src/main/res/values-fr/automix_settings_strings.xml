@@ -3,4 +3,8 @@
     <string name="settings_automix_blend_bars">Durée maximale du mix</string>
     <string name="settings_automix_blend_bars_detail">Limite la transition synchronisée sur le rythme à ce nombre de mesures lorsque la musique le permet.</string>
     <string name="settings_automix_blend_bars_value">Jusqu’à %1$d mesures</string>
+    <string name="settings_automix_blend_bars_4">4 mesures</string>
+    <string name="settings_automix_blend_bars_8">8 mesures</string>
+    <string name="settings_automix_blend_bars_16">16 mesures</string>
+    <string name="settings_automix_blend_bars_32">32 mesures</string>
 </resources>
