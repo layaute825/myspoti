@@ -61,6 +61,29 @@ class PodcastChaptersTest {
     }
 
     @Test
+    fun filtersSpeakerLabelsButKeepsRealDescriptionChapters() {
+        val chapters = parsePodcastChapters(
+            """
+            00:00 Introduction
+            01:00 Personne 1
+            02:00 Speaker 2: invited guest
+            03:00 Participant #3
+            04:00 Les vrais chapitres
+            05:00 Conclusion
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            listOf(
+                PodcastChapter(0L, "Introduction"),
+                PodcastChapter(240_000L, "Les vrais chapitres"),
+                PodcastChapter(300_000L, "Conclusion"),
+            ),
+            chapters,
+        )
+    }
+
+    @Test
     fun removesDuplicatePositions() {
         val chapters = parsePodcastChapters(
             """
