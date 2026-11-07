@@ -12,7 +12,7 @@ data class PodcastChapter(val positionMs: Long, val title: String)
  * This deliberately does not invent chapters when no timestamps are published.
  */
 fun parsePodcastChapters(description: String): List<PodcastChapter> {
-    val line = Regex("""(?m)^\s*(?:[-•*]\s*)?\[?((?:\d{1,2}:)?\d{1,2}:\d{2})\]?\s*(?:[-–—|:]\s*)?(.+?)\s*$""")
+    val line = Regex("""(?m)^[ \t]*(?:[-•*][ \t]*)?\[?((?:\d{1,2}:)?\d{1,2}:\d{2})\]?[ \t]*(?:[-–—|:][ \t]*)?([^\r\n]+?)[ \t]*$""")
     return line.findAll(description).mapNotNull { match ->
         val time = match.groupValues[1].split(':').mapNotNull { it.toLongOrNull() }
         val title = match.groupValues[2].trim().trim('-', '–', '—', '|', ':').trim()
