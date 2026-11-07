@@ -27,11 +27,12 @@ fun parsePodcastChapters(description: String): List<PodcastChapter> {
         .replace("&lt;", "<")
         .replace("&gt;", ">")
     val line = Regex(
-        """(?m)^[ \t]*(?:[-•*][ \t]*)?[\[(]?((?:\d{1,2}:)?\d{1,2}:\d{2})[\])]?[ \t]*(?:[-–—|:][ \t]*)?([^\r\n]+?)[ \t]*$""",
+        """(?m)^[ \t]*(?:[-•*][ \t]*)?(?:[\[(]((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]|((?:\d{1,2}:)?\d{1,2}:\d{2}))[ \t]*(?:[-–—|:][ \t]*)?([^\r\n]+?)[ \t]*$""",
     )
     return line.findAll(text).mapNotNull { match ->
-        val time = match.groupValues[1].split(':').mapNotNull { it.toLongOrNull() }
-        val title = match.groupValues[2].trim().trim('-', '–', '—', '|', ':').trim()
+        val timeText = match.groups[1]?.value ?: match.groups[2]?.value ?: return@mapNotNull null
+        val time = timeText.split(':').mapNotNull { it.toLongOrNull() }
+        val title = match.groupValues[3].trim().trim('-', '–', '—', '|', ':').trim()
         if (time.size !in 2..3 || title.isBlank()) return@mapNotNull null
         val seconds = if (time.size == 3) {
             if (time[1] >= 60 || time[2] >= 60) return@mapNotNull null
