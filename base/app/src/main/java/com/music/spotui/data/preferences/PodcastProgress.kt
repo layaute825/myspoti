@@ -4,6 +4,25 @@ package com.music.spotui.data.preferences
  * Returns a stored podcast position only when it is meaningfully ahead of the player's current
  * position. The tolerance avoids repeated seeks caused by normal state-reporting jitter.
  */
+/**
+ * Computes the next durable local snapshot for an episode.
+ *
+ * Spotify can briefly publish an older position while switching screens/devices. Such a snapshot
+ * must not erase progress already stored on this phone. A deliberate seek/restart opts into
+ * [allowRewind], because moving backwards is then the user's explicit choice.
+ */
+internal fun podcastProgressToPersist(
+    previousPositionMs: Long,
+    incomingPositionMs: Long,
+    allowRewind: Boolean = false,
+    toleranceMs: Long = 2_000L,
+): Long? {
+    if (previousPositionMs < 0L || incomingPositionMs < 0L || toleranceMs < 0L) return null
+    if (allowRewind || previousPositionMs == 0L) return incomingPositionMs
+    if (incomingPositionMs < previousPositionMs - toleranceMs) return null
+    return maxOf(previousPositionMs, incomingPositionMs)
+}
+
 internal fun podcastResumePosition(
     savedPositionMs: Long,
     currentPositionMs: Long,
