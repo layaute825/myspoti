@@ -14,8 +14,15 @@ data class PodcastChapter(
  * Extract publisher-provided chapter timestamps from common show-note formats, including Spotify's
  * documented (MM:SS) / (HH:MM:SS) syntax, square brackets, bullets and HTML line breaks.
  *
- * The parser intentionally does not interpret arbitrary timestamps embedded in prose as chapters.
+ * Arbitrary timestamps embedded in prose and speaker labels are not chapters.
  */
+private val podcastSpeakerLabel = Regex(
+    """(?i)^\s*(?:speakers?|persons?|personnes?|participants?|intervenants?|locuteurs?|orateurs?)\s*#?\s*\d+\b.*$""",
+)
+
+private fun isPodcastSpeakerLabel(title: String): Boolean =
+    podcastSpeakerLabel.matches(title.replace('\u00A0', ' ').trim())
+
 fun parsePodcastChapters(description: String): List<PodcastChapter> {
     val text = description
         .replace(Regex("(?i)<br\\s*/?>|</p\\s*>|</div\\s*>|</li\\s*>"), "\n")
@@ -33,7 +40,7 @@ fun parsePodcastChapters(description: String): List<PodcastChapter> {
         val timeText = match.groups[1]?.value ?: match.groups[2]?.value ?: return@mapNotNull null
         val time = timeText.split(':').mapNotNull { it.toLongOrNull() }
         val title = match.groupValues[3].trim().trim('-', '–', '—', '|', ':').trim()
-        if (time.size !in 2..3 || title.isBlank()) return@mapNotNull null
+        if (time.size !in 2..3 || title.isBlank() || isPodcastSpeakerLabel(title)) return@mapNotNull null
         val seconds = if (time.size == 3) {
             if (time[1] >= 60 || time[2] >= 60) return@mapNotNull null
             time[0] * 3600L + time[1] * 60L + time[2]
