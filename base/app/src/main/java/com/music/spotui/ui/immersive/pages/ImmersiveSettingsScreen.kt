@@ -676,6 +676,16 @@ private fun DownloadsPage(navController: NavController, open: (SettingsPage) -> 
         if (ext != null && extHeader != null) extensionSectionGroup(ext, extHeader)
         // Where downloads come from: the download-source extensions, in the order they are asked.
         sourcesLink(app.myspoti.extensions.Action.DOWNLOAD_SOURCE, open)
+        immersiveGroup("podcast-finish") {
+            row {
+                ImmersiveSwitchRow(
+                    stringResource(R.string.podcast_delete_after_finish),
+                    checked = com.music.spotui.data.preferences.PodcastPrefs.deleteAfterFinish,
+                    onChecked = com.music.spotui.data.preferences.PodcastPrefs::setDeleteAfterFinish,
+                    detail = stringResource(R.string.podcast_delete_after_finish_detail),
+                )
+            }
+        }
         if (com.music.spotui.extensions.Extensions.sources(app.myspoti.extensions.Action.DOWNLOAD_SOURCE).isEmpty()) immersiveGroup("source") {
             row {
                 ImmersiveGroupRow(
