@@ -3276,6 +3276,21 @@ object SongPlayer {
         return com.music.spotui.data.offline.OfflineStore.byLocalId(track.id)?.trackId == "episode:$episodeId"
     }
 
+    /**
+     * The best known position for an episode: persisted progress plus the live player clock when
+     * this exact episode is the active audio source. Show pages use this even after being reopened,
+     * because Spotify's show endpoint can lag behind the current listening session.
+     */
+    fun podcastPositionMs(episodeId: String): Long {
+        if (episodeId.isBlank()) return 0L
+        val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        val live = if (!routing && currentPodcastEpisodeId() == episodeId) getCurrentPosition() else 0L
+        return maxOf(saved, live).coerceAtLeast(0L)
+    }
+
+    /** Flush the active episode before a podcast page is disposed or navigation leaves its list. */
+    fun savePodcastProgressNow() = saveCurrentEpisodeProgress()
+
     fun getDuration(): Long = if (LocalPlayer.active.value && !routing) LocalPlayer.duration() else durationMs
 
     fun getCurrentPosition(): Long {
