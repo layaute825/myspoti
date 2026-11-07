@@ -44,6 +44,92 @@ object PodcastPrefs {
     /** Bumped on every change a mark depends on, so a composable reading [hasNew] redraws. */
     private var tick by mutableIntStateOf(0)
 
+    /** Delete a podcast file automatically after the episode reaches its end. */
+    var deleteAfterFinish by mutableStateOf(prefs().getBoolean("delete_episode_after_finish", false))
+        private set
+
+    fun setDeleteAfterFinish(value: Boolean) {
+        deleteAfterFinish = value
+        prefs().edit().putBoolean("delete_episode_after_finish", value).apply()
+        tick++
+    }
+
+    /** Whether new releases of this show should be queued for download. */
+    fun autoDownload(showId: String): Boolean {
+        @Suppress("UNUSED_VARIABLE") val read = tick
+        return showId.isNotBlank() && prefs().getBoolean("auto_download:$showId", false)
+    }
+
+    /**
+     * Enabling auto-download starts from the newest episode already visible: it does not
+     * unexpectedly download a show's entire back catalogue. Later releases are queued on refresh.
+     */
+    fun setAutoDownload(showId: String, enabled: Boolean, newestKnownRelease: String = "") {
+        if (showId.isBlank()) return
+        val edit = prefs().edit().putBoolean("auto_download:$showId", enabled)
+        if (enabled && newestKnownRelease.isNotBlank()) edit.putString("auto_cursor:$showId", newestKnownRelease)
+        edit.apply()
+        tick++
+    }
+
+    /** New releases since the last auto-download check. */
+    fun autoDownloadCandidates(showId: String, episodes: List<SongsModel>): List<SongsModel> {
+        if (!autoDownload(showId) || episodes.isEmpty()) return emptyList()
+        val p = prefs()
+        val cursor = p.getString("auto_cursor:$showId", "").orEmpty()
+        val dated = episodes.filter { it.isEpisode && it.releaseDate.isNotBlank() }
+        if (cursor.isBlank()) {
+            dated.maxOfOrNull { it.releaseDate }?.let { p.edit().putString("auto_cursor:$showId", it).apply() }
+            tick++
+            return emptyList()
+        }
+        val candidates = dated.filter { it.releaseDate > cursor }.sortedBy { it.releaseDate }
+        if (candidates.isNotEmpty()) {
+            p.edit().putString("auto_cursor:$showId", candidates.maxOf { it.releaseDate }).apply()
+            tick++
+        }
+        return candidates
+    }
+
+    /** Last listened position for this episode (ms); completed episodes start from the beginning. */
+    fun positionMs(episodeId: String): Long {
+        if (episodeId.isBlank()) return 0L
+        @Suppress("UNUSED_VARIABLE") val read = tick
+        val p = prefs()
+        if (p.getBoolean("episode_completed:$episodeId", false)) return 0L
+        return p.getLong("episode_position:$episodeId", 0L).coerceAtLeast(0L)
+    }
+
+    /**
+     * Persist independent episode progress. A completed episode clears its resume point and,
+     * when requested, removes its downloaded copy exactly once.
+     */
+    fun saveProgress(episodeId: String, positionMs: Long, durationMs: Long) {
+        if (episodeId.isBlank() || positionMs < 0L) return
+        val p = prefs()
+        val wasCompleted = p.getBoolean("episode_completed:$episodeId", false)
+        val complete = durationMs > 0L && positionMs >= (durationMs - 10_000L).coerceAtLeast(0L)
+        p.edit().apply {
+            if (complete) {
+                putBoolean("episode_completed:$episodeId", true)
+                putLong("episode_position:$episodeId", 0L)
+            } else if (!wasCompleted) {
+                putLong("episode_position:$episodeId", positionMs)
+            }
+        }.apply()
+        tick++
+        if (complete && !wasCompleted && deleteAfterFinish) {
+            com.music.spotui.data.offline.PodcastDownloader.remove("episode:$episodeId")
+        }
+    }
+
+    /** A deliberate replay clears a previous completion marker. */
+    fun resetProgress(episodeId: String) {
+        if (episodeId.isBlank()) return
+        prefs().edit().remove("episode_completed:$episodeId").putLong("episode_position:$episodeId", 0L).apply()
+        tick++
+    }
+
     fun filter(showId: String): EpisodeFilter {
         val p = prefs()
         val v = p.getString("filter:$showId", null) ?: p.getString("filter", null)
