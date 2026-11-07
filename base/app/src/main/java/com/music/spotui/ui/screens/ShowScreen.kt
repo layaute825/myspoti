@@ -532,18 +532,23 @@ private fun EpisodeRow(
             horizontalArrangement = Arrangement.End,
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
         ) {
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = stringResource(R.string.episode_options),
-                tint = AppText.copy(alpha = 0.8f),
-                modifier = Modifier.size(22.dp).pressable(0.9f, onClick = onMenu),
-            )
-            Spacer(Modifier.weight(1f))
-            EpisodeDownloadButton(episode, size = 24.dp)
-            Spacer(Modifier.width(6.dp))
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(AppText).pressable(0.92f, onClick = onPlay),
+                modifier = Modifier.size(44.dp).clip(CircleShape).pressable(0.9f, onClick = onMenu),
+            ) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.episode_options),
+                    tint = AppText.copy(alpha = 0.8f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            EpisodeDownloadButton(episode, size = 30.dp)
+            Spacer(Modifier.width(4.dp))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(AppText).pressable(0.92f, onClick = onPlay),
             ) {
                 com.music.spotui.ui.components.PlayPauseIcon(
                     playing = playing,
