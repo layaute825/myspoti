@@ -94,7 +94,8 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
 
     fun play() {
         val ep = episode ?: return
-        SongPlayer.playSong(ep.url, context)
+        val resumeAt = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        SongPlayer.playSong(ep.url, context, positionMs = resumeAt.takeIf { it > 0L })
         // The mini player and the notification show it before Spotify reports it.
         com.music.spotui.di.Graph.currentSongState.updateSongState(ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album)
     }
