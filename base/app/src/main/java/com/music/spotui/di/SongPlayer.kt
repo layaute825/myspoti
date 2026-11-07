@@ -3285,7 +3285,7 @@ object SongPlayer {
         if (episodeId.isBlank()) return 0L
         val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
         val live = if (!routing && currentPodcastEpisodeId() == episodeId) getCurrentPosition() else 0L
-        return maxOf(saved, live).coerceAtLeast(0L)
+        return com.music.spotui.data.preferences.podcastDisplayedPositionMs(0L, saved, live)
     }
 
     /** Flush the active episode before a podcast page is disposed or navigation leaves its list. */
