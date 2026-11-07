@@ -25,4 +25,21 @@ class PodcastProgressTest {
     fun restoresWhenTheReportedPositionIsSignificantlyBehind() {
         assertEquals(240_000L, podcastResumePosition(240_000L, 120_000L))
     }
+    @Test
+    fun repairsAnExplicitEpisodeStartWhenSpotifyIgnoresTheRequestedPosition() {
+        // Regression: play(uri, positionMs = 3 min) can still open at 0:00.
+        assertEquals(180_000L, podcastResumePosition(180_000L, 0L))
+    }
+
+    @Test
+    fun doesNotSeekAgainWhenSpotifyHasAppliedTheRequestedEpisodeStart() {
+        assertNull(podcastResumePosition(180_000L, 180_000L))
+        assertNull(podcastResumePosition(180_000L, 179_000L))
+    }
+
+    @Test
+    fun doesNotRewindAnEpisodeThatHasAlreadyPassedTheRequestedStart() {
+        assertNull(podcastResumePosition(180_000L, 181_000L))
+    }
+
 }
