@@ -43,7 +43,7 @@ import kotlin.math.roundToInt
  * passes the threshold, adds the song ONCE on release, then springs back.
  */
 @Composable
-fun SwipeToQueue(song: SongsModel, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun SwipeToQueue(song: SongsModel, modifier: Modifier = Modifier, onQueue: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -72,11 +72,15 @@ fun SwipeToQueue(song: SongsModel, modifier: Modifier = Modifier, content: @Comp
             modifier = Modifier
                 .offset { IntOffset(offset.value.roundToInt(), 0) }
                 .background(com.music.spotui.ui.theme.AppBackground)
-                .pointerInput(song.id) {
+                .pointerInput(song.url, song.spotifyTrackId) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            if (armed && song.spotifyTrackId.isNotBlank()) {
-                                com.music.spotui.di.SongPlayer.addToQueue(song.spotifyTrackId)
+                            if (armed && (song.isEpisode || song.spotifyTrackId.isNotBlank())) {
+                                when {
+                                    onQueue != null -> onQueue()
+                                    song.isEpisode -> com.music.spotui.di.SongPlayer.addEpisodeToQueue(song.url)
+                                    else -> com.music.spotui.di.SongPlayer.addToQueue(song.spotifyTrackId)
+                                }
                                 android.widget.Toast.makeText(context, context.getString(R.string.snackbar_added_to_queue), android.widget.Toast.LENGTH_SHORT).show()
                             }
                             armed = false
