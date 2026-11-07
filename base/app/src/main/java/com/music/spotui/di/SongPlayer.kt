@@ -497,8 +497,16 @@ object SongPlayer {
      */
     private fun saveCurrentEpisodeProgress() {
         val uri = _nowPlaying.value.uri
-        if (!uri.startsWith("spotify:episode:")) return
-        val id = uri.removePrefix("spotify:episode:")
+        val downloadedEpisodeId = if (LocalPlayer.active.value) {
+            LocalPlayer.current()?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+                ?.takeIf { it.startsWith("episode:") }
+                ?.removePrefix("episode:")
+        } else null
+        val id = when {
+            uri.startsWith("spotify:episode:") -> uri.removePrefix("spotify:episode:")
+            !downloadedEpisodeId.isNullOrBlank() -> downloadedEpisodeId
+            else -> return
+        }
         com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), getDuration())
     }
 
@@ -512,10 +520,17 @@ object SongPlayer {
             if (uri.isBlank() || uri != now) return
             val position = getCurrentPosition()
             p.edit().putLong("position", position).apply()
-            if (now.startsWith("spotify:episode:")) {
-                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
-                    now.removePrefix("spotify:episode:"), position, getDuration(),
-                )
+            val downloadedEpisodeId = if (LocalPlayer.active.value) {
+                LocalPlayer.current()?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+                    ?.takeIf { it.startsWith("episode:") }?.removePrefix("episode:")
+            } else null
+            val episodeId = when {
+                now.startsWith("spotify:episode:") -> now.removePrefix("spotify:episode:")
+                !downloadedEpisodeId.isNullOrBlank() -> downloadedEpisodeId
+                else -> null
+            }
+            episodeId?.let {
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(it, position, getDuration())
             }
         }
     }
@@ -1800,7 +1815,7 @@ object SongPlayer {
 
     /** [send] false: the engine has paused already (the sleep timer's fade). */
     private fun pauseSilently(send: Boolean = true) {
-        if (LocalPlayer.active.value) { LocalPlayer.pause(); return }
+        if (LocalPlayer.active.value) { saveCurrentEpisodeProgress(); LocalPlayer.pause(); return }
         saveCurrentEpisodeProgress()
         intendPaused()
         positionMs = getCurrentPosition(); positionAt = SystemClock.elapsedRealtime(); playing = false
