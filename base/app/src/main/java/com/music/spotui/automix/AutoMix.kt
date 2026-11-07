@@ -67,6 +67,19 @@ object AutoMix {
         private set
     fun changeMixLength(value: Int) { mixLength = value; Graph.app.getSharedPreferences(PREFS, 0).edit().putInt("automix_length", value).apply(); com.music.spotui.di.LocalPlayer.autoMixSettingsChanged() }
 
+    /**
+     * Hard upper bound for a beat-matched transition, matching BitChord Web's blend-length choices.
+     * The existing short/auto/long preference still biases the planner below this ceiling.
+     */
+    var blendBars by mutableStateOf(Graph.app.getSharedPreferences(PREFS, 0).getInt("automix_blend_bars", 16).let { if (it in listOf(4, 8, 16, 32)) it else 16 })
+        private set
+    fun changeBlendBars(value: Int) {
+        if (value !in listOf(4, 8, 16, 32)) return
+        blendBars = value
+        Graph.app.getSharedPreferences(PREFS, 0).edit().putInt("automix_blend_bars", value).apply()
+        com.music.spotui.di.LocalPlayer.autoMixSettingsChanged()
+    }
+
     /** A DJ session may leave at an earlier musical section; independent of overlap length. */
     var sessionDj by mutableStateOf(Graph.app.getSharedPreferences(PREFS, 0).getBoolean("automix_session_dj", true))
         private set
@@ -126,8 +139,8 @@ object AutoMix {
         maxSec = if (mixLength == 2) 90.0 else 48.0,
         lengthBias = mixLength - 1,
         style = arrayOf(MixPlan.Style.BLEND, MixPlan.Style.CUT, MixPlan.Style.FADE)[style],
-        minBars = intArrayOf(4, 8, 12)[mixLength],
-        maxBars = intArrayOf(8, 16, 32)[mixLength],
+        minBars = minOf(intArrayOf(4, 8, 12)[mixLength], blendBars),
+        maxBars = blendBars,
         keyWeight = if (harmonic) 2.0 else 0.0,
         smoothSec = doubleArrayOf(4.0, 8.0, 14.0)[mixLength],
         filterSec = doubleArrayOf(6.0, 10.0, 14.0)[mixLength],

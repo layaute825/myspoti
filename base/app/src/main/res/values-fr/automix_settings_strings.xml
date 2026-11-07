@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_blend_bars">Durée maximale du mix</string>
+    <string name="settings_automix_blend_bars_detail">Limite la transition synchronisée sur le rythme à ce nombre de mesures lorsque la musique le permet.</string>
+    <string name="settings_automix_blend_bars_value">Jusqu’à %1$d mesures</string>
+</resources>
