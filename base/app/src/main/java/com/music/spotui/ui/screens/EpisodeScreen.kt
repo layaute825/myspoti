@@ -304,7 +304,7 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                                 )
                                 Text(
-                                    text = episodeClock(chapter.positionMs.toInt()),
+                                    text = episodeClock(chapter.positionMs),
                                     color = AppAccent,
                                     fontSize = 12.sp,
                                 )

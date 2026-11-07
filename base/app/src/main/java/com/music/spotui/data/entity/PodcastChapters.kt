@@ -14,7 +14,7 @@ data class PodcastChapter(val positionMs: Long, val title: String)
 fun parsePodcastChapters(description: String): List<PodcastChapter> {
     val line = Regex("""(?m)^\s*(?:[-•*]\s*)?\[?((?:\d{1,2}:)?\d{1,2}:\d{2})\]?\s*(?:[-–—|:]\s*)?(.+?)\s*$""")
     return line.findAll(description).mapNotNull { match ->
-        val time = match.groupValues[1].split(':').mapNotNull(String::toLongOrNull)
+        val time = match.groupValues[1].split(':').mapNotNull { it.toLongOrNull() }
         val title = match.groupValues[2].trim().trim('-', '–', '—', '|', ':').trim()
         if (time.size !in 2..3 || title.isBlank()) return@mapNotNull null
         val seconds = if (time.size == 3) {
