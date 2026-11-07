@@ -174,7 +174,20 @@ object LocalPlayer {
         // jumping elsewhere shows where it went and why.
         override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
             if (reason == Player.DISCONTINUITY_REASON_SEEK) { mixMoved(); return }
-            if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
+            if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                // The local player has just reached the end of its previous item. Capture the
+                // old episode's final position before its media item is no longer current.
+                val previous = tracks.getOrNull(old.mediaItemIndex)
+                val episodeId = previous?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+                    ?.takeIf { it.startsWith("episode:") }
+                    ?.removePrefix("episode:")
+                if (!episodeId.isNullOrBlank() && previous != null) {
+                    com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                        episodeId, old.positionMs, previous.durationMs,
+                    )
+                }
+                return
+            }
             log("moved by the player from ${old.positionMs} to ${new.positionMs} ms (reason $reason), item ${new.mediaItemIndex + 1}")
         }
         // The queue grew or shrank: a queue of one song repeated loops it as repeat one does.
