@@ -42,6 +42,25 @@ class PodcastChaptersTest {
     }
 
     @Test
+    fun parsesSpotifyParenthesizedTimestampsAndHtmlBreaks() {
+        val chapters = parsePodcastChapters(
+            """
+            <p>(00:00) Introduction</p><p>(12:34) Interview &amp; discussion</p>
+            (1:02:03) Conclusion
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            listOf(
+                PodcastChapter(0L, "Introduction"),
+                PodcastChapter(12 * 60_000L + 34_000L, "Interview & discussion"),
+                PodcastChapter(3_723_000L, "Conclusion"),
+            ),
+            chapters,
+        )
+    }
+
+    @Test
     fun removesDuplicatePositions() {
         val chapters = parsePodcastChapters(
             """

@@ -5,4 +5,7 @@
     <string name="podcast_delete_after_finish">Delete podcast downloads when finished</string>
     <string name="podcast_delete_after_finish_detail">When an episode reaches its end, remove its downloaded copy to free space.</string>
     <string name="podcast_chapters">Chapters</string>
+    <string name="podcast_chapters_spotify">Spotify transcript chapters</string>
+    <string name="podcast_chapters_description">Chapters from the episode description</string>
+    <string name="podcast_chapters_loading">Looking for Spotify chapters…</string>
 </resources>

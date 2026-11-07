@@ -5,4 +5,7 @@
     <string name="podcast_delete_after_finish">Supprimer les podcasts après écoute</string>
     <string name="podcast_delete_after_finish_detail">Quand un épisode arrive à sa fin, sa copie téléchargée est supprimée pour libérer de l’espace.</string>
     <string name="podcast_chapters">Chapitres</string>
+    <string name="podcast_chapters_spotify">Chapitres de la transcription Spotify</string>
+    <string name="podcast_chapters_description">Chapitres indiqués dans la description</string>
+    <string name="podcast_chapters_loading">Recherche des chapitres Spotify…</string>
 </resources>

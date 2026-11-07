@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -104,9 +105,23 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
         com.music.spotui.di.Graph.currentSongState.updateSongState(ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album)
     }
 
-    val chapters = remember(episode?.description) {
+    val spotifyChapters by vm.chapters.collectAsState()
+    val chaptersLoading = vm.chaptersLoading.value
+    val descriptionChapters = remember(episode?.description) {
         com.music.spotui.data.entity.parsePodcastChapters(episode?.description.orEmpty())
     }
+    // Spotify transcript headings are authoritative. Only fall back to the publisher's notes
+    // when Spotify has no chapter transcript for this episode.
+    val chapters = remember(spotifyChapters, descriptionChapters) {
+        spotifyChapters.map {
+            com.music.spotui.data.entity.PodcastChapter(
+                positionMs = it.startMs,
+                title = it.title,
+                source = com.music.spotui.data.entity.PodcastChapterSource.SPOTIFY_TRANSCRIPT,
+            )
+        }.ifEmpty { descriptionChapters }
+    }
+    val chaptersFromSpotify = spotifyChapters.isNotEmpty()
 
     episode?.let { ep ->
         if (menuOpen) EpisodeOptionsSheet(
@@ -207,29 +222,42 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                             val ep = episode ?: return@SaveEpisodeButton
                             SongPlayer.setSaved(ep.spotifyUri, !saved)
                         }
-                        episode?.let { EpisodeDownloadButton(it, size = 26.dp) }
-                        Icon(
-                            Icons.Default.Share,
-                            contentDescription = stringResource(R.string.a11y_share),
-                            tint = AppText.copy(alpha = 0.85f),
-                            modifier = Modifier.size(26.dp).pressable(0.9f) { episode?.let { shareEpisode(context, it) } },
-                        )
-                        Spacer(Modifier.width(20.dp))
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = stringResource(R.string.episode_options),
-                            tint = AppText.copy(alpha = 0.85f),
-                            modifier = Modifier.size(26.dp).pressable(0.9f) { menuOpen = true },
-                        )
+                        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                            episode?.let { EpisodeDownloadButton(it, size = 24.dp) }
+                        }
+                        Box(
+                            modifier = Modifier.size(44.dp).clip(CircleShape).clickable {
+                                episode?.let { shareEpisode(context, it) }
+                            },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = stringResource(R.string.a11y_share),
+                                tint = AppText.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        Box(
+                            modifier = Modifier.size(44.dp).clip(CircleShape).clickable { menuOpen = true },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.episode_options),
+                                tint = AppText.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                         Spacer(Modifier.weight(1f))
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(22.dp))
                                 .background(AppAccent)
                                 .pressable(0.95f) { if (playing) SongPlayer.pause() else play() }
-                                .padding(horizontal = 20.dp),
+                                .padding(horizontal = 18.dp),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 com.music.spotui.ui.components.PlayPauseIcon(
@@ -269,48 +297,92 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                         )
                     }
                 }
-                if (chapters.isNotEmpty()) item {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                if (chaptersLoading && chapters.isEmpty()) item(key = "chapters-loading") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = AppAccent,
+                        )
+                        Text(
+                            stringResource(R.string.podcast_chapters_loading),
+                            color = AppText.copy(alpha = 0.65f),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(start = 10.dp),
+                        )
+                    }
+                }
+                if (chapters.isNotEmpty()) item(key = "chapters-heading") {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text(
                             stringResource(R.string.podcast_chapters),
                             color = AppText,
-                            fontSize = 18.sp,
+                            fontSize = 19.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp),
                         )
-                        chapters.forEach { chapter ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        val isCurrent = SongPlayer.nowPlaying.value.uri == uri
-                                        if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
-                                            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
-                                        }
-                                        if (isCurrent) SongPlayer.seekTo(chapter.positionMs)
-                                        else {
-                                            SongPlayer.playSong(ep.url, context, positionMs = chapter.positionMs)
-                                            com.music.spotui.di.Graph.currentSongState.updateSongState(
-                                                ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album,
-                                            )
-                                        }
+                        Text(
+                            stringResource(
+                                if (chaptersFromSpotify) R.string.podcast_chapters_spotify
+                                else R.string.podcast_chapters_description,
+                            ),
+                            color = AppText.copy(alpha = 0.58f),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 3.dp, bottom = 8.dp),
+                        )
+                    }
+                }
+                if (chapters.isNotEmpty()) items(chapters, key = { "chapter:${it.positionMs}" }) { chapter ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 2.dp)
+                            .heightIn(min = 56.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppText.copy(alpha = 0.045f))
+                            .clickable {
+                                if (SongPlayer.isEpisodeCurrent(episodeId)) {
+                                    SongPlayer.seekTo(chapter.positionMs)
+                                } else {
+                                    if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                                        com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
                                     }
-                                    .padding(vertical = 10.dp, horizontal = 8.dp),
-                            ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = AppAccent)
-                                Text(
-                                    text = chapter.title,
-                                    color = AppText,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                                )
-                                Text(
-                                    text = episodeClock(chapter.positionMs),
-                                    color = AppAccent,
-                                    fontSize = 12.sp,
-                                )
+                                    SongPlayer.playSong(ep.url, context, positionMs = chapter.positionMs)
+                                    com.music.spotui.di.Graph.currentSongState.updateSongState(
+                                        ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album,
+                                    )
+                                }
                             }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = AppAccent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text(
+                            text = chapter.title,
+                            color = AppText,
+                            fontSize = 14.sp,
+                            lineHeight = 19.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(start = 10.dp, end = 12.dp),
+                        )
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                                .background(AppAccent.copy(alpha = 0.12f))
+                                .padding(horizontal = 9.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = episodeClock(chapter.positionMs),
+                                color = AppAccent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                     }
                 }
@@ -341,23 +413,24 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
 /** ✓ disc when the episode is saved, outlined + otherwise (same shape as the player's). */
 @Composable
 private fun SaveEpisodeButton(saved: Boolean, onClick: () -> Unit) {
-    if (saved) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(26.dp)
-                .clip(CircleShape)
-                .background(AppAccent)
-                .pressable(0.9f, onClick = onClick),
-        ) {
-            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.episode_unsave), tint = Color.Black, modifier = Modifier.size(17.dp))
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick),
+    ) {
+        if (saved) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(26.dp).clip(CircleShape).background(AppAccent),
+            ) {
+                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.episode_unsave), tint = Color.Black, modifier = Modifier.size(17.dp))
+            }
+        } else {
+            Icon(
+                Icons.Outlined.Add,
+                contentDescription = stringResource(R.string.episode_save),
+                tint = AppText.copy(alpha = 0.85f),
+                modifier = Modifier.size(24.dp),
+            )
         }
-    } else {
-        Icon(
-            Icons.Outlined.Add,
-            contentDescription = stringResource(R.string.episode_save),
-            tint = AppText.copy(alpha = 0.85f),
-            modifier = Modifier.size(28.dp).pressable(0.9f, onClick = onClick),
-        )
     }
 }
