@@ -495,18 +495,26 @@ object SongPlayer {
      * track changes and play/pause only, an app closed mid-song resumed it from its start (reported
      * with an extension's song after a relaunch).
      */
-    private fun saveCurrentEpisodeProgress() {
-        val uri = _nowPlaying.value.uri
-        val downloadedEpisodeId = if (LocalPlayer.active.value) {
-            LocalPlayer.current()?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+    /**
+     * Resolve the episode from the audio source itself. The last-track preference is only a
+     * single-player snapshot and must not decide which podcast's history gets persisted.
+     */
+    private fun currentPodcastEpisodeId(): String? {
+        if (LocalPlayer.active.value) {
+            return LocalPlayer.current()
+                ?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
                 ?.takeIf { it.startsWith("episode:") }
                 ?.removePrefix("episode:")
-        } else null
-        val id = when {
-            uri.startsWith("spotify:episode:") -> uri.removePrefix("spotify:episode:")
-            !downloadedEpisodeId.isNullOrBlank() -> downloadedEpisodeId
-            else -> return
+                ?.takeIf { it.isNotBlank() }
         }
+        return _nowPlaying.value.uri
+            .takeIf { it.startsWith("spotify:episode:") }
+            ?.removePrefix("spotify:episode:")
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun saveCurrentEpisodeProgress() {
+        val id = currentPodcastEpisodeId() ?: return
         com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), getDuration())
     }
 
@@ -514,27 +522,61 @@ object SongPlayer {
         override fun run() {
             main.postDelayed(this, POSITION_SAVE_MS)
             if (!(playing || LocalPlayer.isPlaying())) return
-            val p = lastTrackPrefs()
-            val uri = p.getString("uri", "").orEmpty()
-            val now = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
-            if (uri.isBlank() || uri != now) return
+
             val position = getCurrentPosition()
-            p.edit().putLong("position", position).apply()
-            val downloadedEpisodeId = if (LocalPlayer.active.value) {
-                LocalPlayer.current()?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
-                    ?.takeIf { it.startsWith("episode:") }?.removePrefix("episode:")
-            } else null
-            val episodeId = when {
-                now.startsWith("spotify:episode:") -> now.removePrefix("spotify:episode:")
-                !downloadedEpisodeId.isNullOrBlank() -> downloadedEpisodeId
-                else -> null
+            val currentUri = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
+
+            // This snapshot only restores the player card. Podcast history is saved independently.
+            val p = lastTrackPrefs()
+            val savedUri = p.getString("uri", "").orEmpty()
+            if (savedUri.isNotBlank() && savedUri == currentUri) {
+                p.edit().putLong("position", position).apply()
             }
-            episodeId?.let {
-                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(it, position, getDuration())
+
+            currentPodcastEpisodeId()?.let { episodeId ->
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, position, getDuration())
             }
         }
     }
     init { main.postDelayed(savePosition, POSITION_SAVE_MS) }
+
+    private const val PODCAST_RESUME_DELAY_MS = 500L
+
+    @Volatile private var explicitlyStartedEpisodeUri = ""
+    @Volatile private var explicitlyStartedEpisodeUntil = 0L
+
+    private fun resumeSavedPodcastEpisode(uri: String, reportedPositionMs: Long) {
+        val episodeId = uri.removePrefix("spotify:episode:")
+        val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        if (com.music.spotui.data.preferences.podcastResumePosition(saved, reportedPositionMs) == null) return
+
+        scope.launch {
+            kotlinx.coroutines.delay(PODCAST_RESUME_DELAY_MS)
+            if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri)) return@launch
+
+            // Re-read after the player settles so an old state event cannot override a newer seek.
+            val latest = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+            val target = com.music.spotui.data.preferences.podcastResumePosition(latest, getCurrentPosition())
+                ?: return@launch
+            if (seekHeld(uri)) return@launch
+
+            app.myspoti.host.android.Logbook.log("podcast: restoring episode " + episodeId + " at " + target + " ms")
+            seekTo(target)
+        }
+    }
+
+    private fun consumeExplicitEpisodeStart(uri: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (now > explicitlyStartedEpisodeUntil) {
+            explicitlyStartedEpisodeUri = ""
+            explicitlyStartedEpisodeUntil = 0L
+            return false
+        }
+        if (uri != explicitlyStartedEpisodeUri) return false
+        explicitlyStartedEpisodeUri = ""
+        explicitlyStartedEpisodeUntil = 0L
+        return true
+    }
 
     private fun acceptsSessionUpdates() = Graph.app.getSharedPreferences("myspoti_prefs", Context.MODE_PRIVATE)
         .getBoolean("LoggedIn", false)
@@ -785,6 +827,9 @@ object SongPlayer {
             prev = s.previous?.let(::songOf),
             next = s.next?.let(::songOf),
         )
+        if (trackChanged && uri.startsWith("spotify:episode:") && !consumeExplicitEpisodeStart(uri)) {
+            resumeSavedPodcastEpisode(uri, reported)
+        }
         // Started or moved on without Myspoti asking (another device, a transfer back here): the
         // Connect mirror sends it back through the extensions. After this state's own follow-ups.
         val moved = trackChanged || (!wasPlaying && playing)
@@ -1267,6 +1312,16 @@ object SongPlayer {
         val episodeId = song.removePrefix("episode:").takeIf { song.startsWith("episode:") }
         val trackId = episodeId ?: spotifyTrackIdForPlayback(song) ?: return
         val itemUri = if (episodeId != null) "spotify:episode:$episodeId" else SPOTIFY_TRACK_PREFIX + trackId
+        val requestedPositionMs = positionMs ?: episodeId?.let {
+            com.music.spotui.data.preferences.podcastResumePosition(
+                com.music.spotui.data.preferences.PodcastPrefs.positionMs(it),
+                0L,
+            )
+        }
+        if (episodeId != null && requestedPositionMs != null) {
+            explicitlyStartedEpisodeUri = itemUri
+            explicitlyStartedEpisodeUntil = SystemClock.elapsedRealtime() + 30_000L
+        }
         val ctx = if (alone) null else contextUri ?: contextRegistry[song]
         // What a smart shuffle ending brings back: the order of the last play that was not one.
         if (ctx != null) {
@@ -1282,9 +1337,9 @@ object SongPlayer {
                 Log.d(TAG, "playing $itemUri in ${ctx ?: "no context"}: ${queueTag()}")
                 if (ctx != null) {
                     val sent = order?.takeIf { ctx == contextUri }
-                    api.player.play(ctx, trackUri = itemUri, index = rowIndex(song, ctx, sent), positionMs = positionMs, order = sent)
+                    api.player.play(ctx, trackUri = itemUri, index = rowIndex(song, ctx, sent), positionMs = requestedPositionMs, order = sent)
                 }
-                else api.player.play(itemUri)
+                else api.player.play(itemUri, positionMs = requestedPositionMs)
             }
         }
     }
@@ -1550,7 +1605,7 @@ object SongPlayer {
             positionMs = end.takeIf { it > 0 }, askExtensions = false)
     }
 
-    private const val POSITION_SAVE_MS = 10_000L
+    private const val POSITION_SAVE_MS = 5_000L
 
     /** How long a song sent to Spotify for want of the extensions may take to start there. */
     private const val FALLBACK_START_MS = 10_000L
