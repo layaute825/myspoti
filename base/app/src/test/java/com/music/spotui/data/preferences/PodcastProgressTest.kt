@@ -79,4 +79,18 @@ class PodcastProgressTest {
         assertEquals(0L, podcastProgressToPersist(180_000L, 0L, allowRewind = true))
     }
 
+
+    @Test
+    fun existingLocalSnapshotWinsOverAStaleOrHigherSpotifyPosition() {
+        assertEquals(
+            60_000L,
+            podcastDisplayedPositionMs(
+                serverPositionMs = 180_000L,
+                savedPositionMs = 60_000L,
+                livePositionMs = 0L,
+                preferLocalSnapshot = true,
+            ),
+        )
+    }
+
 }
