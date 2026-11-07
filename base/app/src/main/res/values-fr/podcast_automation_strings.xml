@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="podcast_auto_download_on">Téléchargement automatique activé</string>
+    <string name="podcast_auto_download_off">Télécharger automatiquement les nouveaux épisodes</string>
+    <string name="podcast_delete_after_finish">Supprimer les podcasts après écoute</string>
+    <string name="podcast_delete_after_finish_detail">Quand un épisode arrive à sa fin, sa copie téléchargée est supprimée pour libérer de l’espace.</string>
+</resources>
