@@ -4,4 +4,5 @@
     <string name="podcast_auto_download_off">Download new episodes automatically</string>
     <string name="podcast_delete_after_finish">Delete podcast downloads when finished</string>
     <string name="podcast_delete_after_finish_detail">When an episode reaches its end, remove its downloaded copy to free space.</string>
+    <string name="podcast_chapters">Chapters</string>
 </resources>

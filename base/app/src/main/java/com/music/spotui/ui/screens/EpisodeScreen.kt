@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
@@ -101,6 +102,10 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
         SongPlayer.playSong(ep.url, context, positionMs = resumeAt.takeIf { it > 0L })
         // The mini player and the notification show it before Spotify reports it.
         com.music.spotui.di.Graph.currentSongState.updateSongState(ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album)
+    }
+
+    val chapters = remember(episode?.description) {
+        com.music.spotui.data.entity.parsePodcastChapters(episode?.description.orEmpty())
     }
 
     episode?.let { ep ->
@@ -260,6 +265,51 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                             color = AppAccent,
                             fontSize = 12.sp,
                         )
+                    }
+                }
+                if (chapters.isNotEmpty()) item {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        Text(
+                            stringResource(R.string.podcast_chapters),
+                            color = AppText,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                        chapters.forEach { chapter ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        val isCurrent = SongPlayer.nowPlaying.value.uri == uri
+                                        if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                                            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+                                        }
+                                        if (isCurrent) SongPlayer.seekTo(chapter.positionMs)
+                                        else {
+                                            SongPlayer.playSong(ep.url, context, positionMs = chapter.positionMs)
+                                            com.music.spotui.di.Graph.currentSongState.updateSongState(
+                                                ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album,
+                                            )
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = AppAccent)
+                                Text(
+                                    text = chapter.title,
+                                    color = AppText,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                )
+                                Text(
+                                    text = episodeClock(chapter.positionMs.toInt()),
+                                    color = AppAccent,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
                     }
                 }
                 if (ep.description.isNotBlank()) item {
