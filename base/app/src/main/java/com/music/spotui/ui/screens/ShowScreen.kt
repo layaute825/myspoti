@@ -100,13 +100,18 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
     val show = page?.show
     val audiobook = page?.audiobook == true
     val items = page?.items.orEmpty().map { episode ->
-        if (episode.isEpisode) episode.copy(
-            playedPositionMs = com.music.spotui.data.preferences.podcastDisplayedPositionMs(
-                serverPositionMs = episode.playedPositionMs,
-                savedPositionMs = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episode.url.removePrefix("episode:")),
-                livePositionMs = SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
-            ),
-        ) else episode
+        if (episode.isEpisode) {
+            val episodeId = episode.url.removePrefix("episode:")
+            val hasLocalSnapshot = com.music.spotui.data.preferences.PodcastPrefs.hasStoredProgress(episodeId)
+            episode.copy(
+                playedPositionMs = com.music.spotui.data.preferences.podcastDisplayedPositionMs(
+                    serverPositionMs = episode.playedPositionMs,
+                    savedPositionMs = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
+                    livePositionMs = SongPlayer.podcastPositionMs(episodeId),
+                    preferLocalSnapshot = hasLocalSnapshot,
+                ),
+            )
+        } else episode
     }
 
     var tab by remember { mutableStateOf(0) }
