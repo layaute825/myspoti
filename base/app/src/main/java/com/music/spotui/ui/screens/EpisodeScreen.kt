@@ -92,7 +92,8 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
     var expanded by remember { mutableStateOf(false) }
     val np by SongPlayer.nowPlaying
     val uri = "spotify:episode:$episodeId"
-    val playing = SongPlayer.isEpisodeCurrent(episodeId) && SongPlayer.isPlaying()
+    // Keep this screen subscribed to track changes as well as play/pause changes.
+    val playing = (np.uri == uri || SongPlayer.isEpisodeCurrent(episodeId)) && SongPlayer.isPlaying()
     val saved = SongPlayer.library[uri] == true
 
     fun play() {

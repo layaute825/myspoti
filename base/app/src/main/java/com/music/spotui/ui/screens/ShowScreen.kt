@@ -87,6 +87,7 @@ import com.music.spotui.ui.viewmodel.ShowViewModel
 fun ShowScreen(navController: NavController, showId: String, showName: String = "") {
     val vm: ShowViewModel = viewModel()
     val context = LocalContext.current
+    val np by SongPlayer.nowPlaying
     LaunchedEffect(showId) { vm.loadShow(showId) }
 
     val pageState by vm.page.collectAsState()
@@ -235,7 +236,7 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                 com.music.spotui.ui.components.SwipeToQueue(song = ep) {
                 EpisodeRow(
                     episode = ep,
-                    playing = SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:")) && SongPlayer.isPlaying(),
+                    playing = (np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" || SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:"))) && SongPlayer.isPlaying(),
                     finished = vm.isFinished(ep),
                     isNew = vm.isNew(ep),
                     onPlay = {

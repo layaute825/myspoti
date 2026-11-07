@@ -226,7 +226,7 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
                     com.music.spotui.ui.components.SwipeToQueue(song = ep) {
                     ImmersiveEpisodeRow(
                         episode = ep,
-                        playing = SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:")) && SongPlayer.isPlaying(),
+                        playing = (np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" || SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:"))) && SongPlayer.isPlaying(),
                         finished = vm.isFinished(ep),
                         isNew = vm.isNew(ep),
                         onPlay = {

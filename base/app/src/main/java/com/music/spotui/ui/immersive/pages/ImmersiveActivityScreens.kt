@@ -286,11 +286,12 @@ fun ImmersiveEpisodeScreen(navController: NavController, episodeId: String, fall
     LaunchedEffect(episodeId) { vm.load(episodeId) }
 
     val episode by vm.episode.collectAsState()
+    val np by SongPlayer.nowPlaying
     val finished = vm.finished.value
     var menuOpen by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     val uri = "spotify:episode:$episodeId"
-    val playing = SongPlayer.isEpisodeCurrent(episodeId) && SongPlayer.isPlaying()
+    val playing = (np.uri == uri || SongPlayer.isEpisodeCurrent(episodeId)) && SongPlayer.isPlaying()
     val saved = SongPlayer.library[uri] == true
     val spotifyChapters by vm.chapters.collectAsState()
     val chaptersLoading = vm.chaptersLoading.value
