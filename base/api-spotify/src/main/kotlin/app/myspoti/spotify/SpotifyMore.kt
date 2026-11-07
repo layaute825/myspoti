@@ -169,14 +169,21 @@ class SpotifyHome(private val gql: Gql) : Home {
 }
 
 /**
- * Only sections with a title are chapter headings. Speaker switches are part of the transcript,
- * not chapters; sentence/text sections are deliberately ignored.
+ * Speaker switches are transcript metadata, not chapter headings. Spotify labels can appear
+ * in English or French and may include punctuation or a short speaker annotation.
  */
+private val transcriptSpeakerLabel = Regex(
+    """(?i)^\s*(?:speakers?|persons?|personnes?|participants?|intervenants?|locuteurs?|orateurs?)\s*#?\s*\d+\b.*$""",
+)
+
+private fun isTranscriptSpeakerLabel(title: String): Boolean =
+    transcriptSpeakerLabel.matches(title.replace('\u00A0', ' ').trim())
+
 internal fun spotifyEpisodeChapters(transcript: JsonElement): List<app.myspoti.api.EpisodeChapter> =
     transcript.list("section").mapNotNull { section ->
         val title = section.str("title.title")?.trim().orEmpty()
         val start = section.long("startMs") ?: return@mapNotNull null
-        if (title.isBlank() || title.matches(Regex("(?i)Speaker\\s+\\d+")) || start < 0L) {
+        if (title.isBlank() || isTranscriptSpeakerLabel(title) || start < 0L) {
             null
         } else {
             app.myspoti.api.EpisodeChapter(startMs = start, title = title)
