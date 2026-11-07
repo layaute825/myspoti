@@ -151,7 +151,10 @@ object PodcastPrefs {
             if (complete) {
                 putBoolean("episode_completed:$episodeId", true)
                 putLong("episode_position:$episodeId", 0L)
-            } else if (!wasCompleted) {
+            } else {
+                // A replay from the queue may not pass through the episode page's reset action.
+                // The first partial position therefore clears the completion marker itself.
+                remove("episode_completed:$episodeId")
                 putLong("episode_position:$episodeId", positionMs)
             }
         }.apply()
