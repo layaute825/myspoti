@@ -98,7 +98,7 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
 
     fun play() {
         val ep = episode ?: return
-        val resumeAt = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        val resumeAt = SongPlayer.podcastPositionMs(episodeId)
         if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
             com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
         }
