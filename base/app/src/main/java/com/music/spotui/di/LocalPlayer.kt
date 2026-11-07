@@ -141,6 +141,43 @@ object LocalPlayer {
     /** The main player's listener: it moves to the deck that takes over at an AutoMix (see [takeOver]). */
     private var mainListener: Player.Listener? = null
 
+    private fun podcastEpisodeId(track: LocalTrack?): String? =
+        track?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+            ?.takeIf { it.startsWith("episode:") }
+            ?.removePrefix("episode:")
+            ?.takeIf { it.isNotBlank() }
+
+    private fun savePodcastEpisodePosition(
+        track: LocalTrack?,
+        positionMs: Long,
+        allowRewind: Boolean = false,
+    ) {
+        val episodeId = podcastEpisodeId(track) ?: return
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+            episodeId, positionMs, track?.durationMs ?: 0L, allowRewind = allowRewind,
+        )
+    }
+
+    /** Restore an episode selected directly from the downloaded/local queue. */
+    private fun resumePodcastEpisodeIfNeeded(p: ExoPlayer) {
+        val track = current() ?: return
+        val episodeId = podcastEpisodeId(track) ?: return
+        if (com.music.spotui.data.preferences.podcastResumePosition(
+                com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
+                p.currentPosition,
+            ) == null) return
+        val index = p.currentMediaItemIndex
+        handler.postDelayed({
+            if (exo !== p || !active.value || p.currentMediaItemIndex != index || current()?.id != track.id) return@postDelayed
+            val latestTarget = com.music.spotui.data.preferences.podcastResumePosition(
+                com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId),
+                p.currentPosition,
+            ) ?: return@postDelayed
+            log("podcast: restoring downloaded episode " + episodeId + " at " + latestTarget + " ms")
+            p.seekTo(latestTarget)
+        }, 500L)
+    }
+
     private fun listenerFor(p: ExoPlayer): Player.Listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = publish()
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -173,16 +210,31 @@ object LocalPlayer {
         // Moves the player makes by itself (not a seek, not a song's end): logged, so a song
         // jumping elsewhere shows where it went and why.
         override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
+            // A manual queue skip is a discontinuity too: save the episode being left before the
+            // player's current media item changes.
+            if (old.mediaItemIndex != new.mediaItemIndex) {
+                savePodcastEpisodePosition(tracks.getOrNull(old.mediaItemIndex), old.positionMs)
+            }
             if (reason == Player.DISCONTINUITY_REASON_SEEK) { mixMoved(); return }
             if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
-            log("moved by the player from ${old.positionMs} to ${new.positionMs} ms (reason $reason), item ${new.mediaItemIndex + 1}")
+            log("moved by the player from " + old.positionMs + " to " + new.positionMs +
+                " ms (reason " + reason + "), item " + (new.mediaItemIndex + 1))
         }
         // The queue grew or shrank: a queue of one song repeated loops it as repeat one does.
         override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) = applyRepeat(p)
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             log("isPlaying $isPlaying at ${p.currentPosition} ms")
             if (isPlaying) errors.played()
-            if (isPlaying) tick.run()
+            if (isPlaying) {
+                current()?.let { track ->
+                    podcastEpisodeId(track)?.let { episodeId ->
+                        if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+                        }
+                    }
+                }
+                tick.run()
+            }
             // A station that plays on for a while has its reconnect tries back (see reconnectRadio).
             handler.removeCallbacks(radioSteady)
             if (isPlaying && current()?.isRadio == true) handler.postDelayed(radioSteady, RADIO_STEADY_MS)
@@ -205,6 +257,7 @@ object LocalPlayer {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && wentPastRepeat(p, p.previousMediaItemIndex)) return
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) startsAtZero(p)
             if (skipHidden(p, reason)) return
+            resumePodcastEpisodeIfNeeded(p)
             prefetchNext(p); continueIfLast(p)
         }
 
@@ -431,6 +484,7 @@ object LocalPlayer {
      */
     fun play(list: List<LocalTrack>, index: Int, shuffle: Boolean = false, context: String? = null, contextUri: String = "", startMs: Long = 0L, continues: Boolean = false, paused: Boolean = false) {
         if (list.isEmpty()) return
+        if (active.value) savePodcastEpisodePosition(current(), position())
         // Another song picked: repeat once was for the song left.
         val shown = SongPlayer.nowPlaying.value.uri.substringAfterLast(':')
         val picked = list.getOrNull(index.coerceIn(0, list.lastIndex))?.let(::spotifyId).orEmpty()
@@ -473,7 +527,11 @@ object LocalPlayer {
         // Timed (on the main thread, as Media3 wants): a long list's timeline is built here, the
         // hotspot of a 2.3.0 ANR (an audit asked for the measure before any change to it).
         val built = android.os.SystemClock.elapsedRealtime()
-        p.setMediaItems(order.map(::item), if (whole) 0 else start, startMs.coerceAtLeast(0L))
+        val initialIndex = if (whole) 0 else start
+        val savedEpisodePosition = podcastEpisodeId(order.getOrNull(initialIndex))
+            ?.let { com.music.spotui.data.preferences.PodcastPrefs.positionMs(it) } ?: 0L
+        val initialPosition = if (startMs > 0L) startMs else savedEpisodePosition
+        p.setMediaItems(order.map(::item), initialIndex, initialPosition.coerceAtLeast(0L))
         val took = android.os.SystemClock.elapsedRealtime() - built
         if (took >= 50) log("setMediaItems: ${order.size} songs in $took ms")
         p.prepare()
@@ -485,6 +543,7 @@ object LocalPlayer {
     /** Back to Spotify: stop and forget the local queue. */
     fun stop() {
         if (!active.value) return
+        savePodcastEpisodePosition(current(), position())
         CastPlayback.stop(back = false)
         endFade()
         active.value = false
@@ -1501,15 +1560,24 @@ object LocalPlayer {
     fun seekTo(ms: Long) {
         endFade()
         exo?.let { p ->
+            // A backwards seek is intentional input, not a stale playback snapshot.
+            val track = current()
             // A seek into the tail of a song is the user's choice: that song then ends as usual.
             if (CrossfadeRamp.shouldStart(CrossfadePref.seconds, duration(), ms)) noFadeFor = p.currentMediaItemIndex
-            if (CastPlayback.active) { CastPlayback.seek(ms); p.seekTo(ms); return }
+            if (CastPlayback.active) {
+                savePodcastEpisodePosition(track, ms.coerceAtLeast(0L), allowRewind = true)
+                CastPlayback.seek(ms); p.seekTo(ms); return
+            }
             val known = knownLength()
             // To the song's end: it ended, and plays again as its repeat says (never the next song then).
-            if (LocalRepeat.seekEnds(ms, known) && playAgain(p, seekAt = ms)) return
+            if (LocalRepeat.seekEnds(ms, known) && playAgain(p, seekAt = ms)) {
+                savePodcastEpisodePosition(track, ms.coerceAtLeast(0L), allowRewind = true)
+                return
+            }
             // Within the length the player knows: Spotify's (or an extension's) is not the audio's.
             val to = LocalRepeat.seekTarget(ms, known)
             if (to != ms) log("seek to $ms ms kept within the audio's $known ms")
+            savePodcastEpisodePosition(track, to.coerceAtLeast(0L), allowRewind = true)
             p.seekTo(to)
         }
     }

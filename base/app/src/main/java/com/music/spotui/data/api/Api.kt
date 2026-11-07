@@ -563,6 +563,18 @@ class Api constructor(
         return runCatching { episodeSong(api.podcasts.episode("spotify:episode:$episodeId")) }.getOrNull()
     }
 
+    /** Spotify's own timestamped transcript chapter headings; empty when the episode has no transcript. */
+    suspend fun getEpisodeChapters(episodeId: String): List<app.myspoti.api.EpisodeChapter> {
+        if (!ready()) return emptyList()
+        return try {
+            api.podcasts.episodeChapters("spotify:episode:$episodeId")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     /**
      * Marks an episode finished, or not started. The page keeps this in its own
      * "markedasfinished" collection — the set behind its "Mark as finished" menu — so the

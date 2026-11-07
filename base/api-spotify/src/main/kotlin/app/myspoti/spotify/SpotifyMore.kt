@@ -168,6 +168,28 @@ class SpotifyHome(private val gql: Gql) : Home {
     }
 }
 
+/**
+ * Speaker switches are transcript metadata, not chapter headings. Spotify labels can appear
+ * in English or French and may include punctuation or a short speaker annotation.
+ */
+private val transcriptSpeakerLabel = Regex(
+    """(?i)^\s*(?:speakers?|persons?|personnes?|participants?|intervenants?|locuteurs?|orateurs?)\s*#?\s*\d+\b.*$""",
+)
+
+private fun isTranscriptSpeakerLabel(title: String): Boolean =
+    transcriptSpeakerLabel.matches(title.replace('\u00A0', ' ').trim())
+
+internal fun spotifyEpisodeChapters(transcript: JsonElement): List<app.myspoti.api.EpisodeChapter> =
+    transcript.list("section").mapNotNull { section ->
+        val title = section.str("title.title")?.trim().orEmpty()
+        val start = section.long("startMs") ?: return@mapNotNull null
+        if (title.isBlank() || isTranscriptSpeakerLabel(title) || start < 0L) {
+            null
+        } else {
+            app.myspoti.api.EpisodeChapter(startMs = start, title = title)
+        }
+    }.distinctBy { it.startMs }.sortedBy { it.startMs }
+
 class SpotifyPodcasts(private val gql: Gql, private val bridge: Bridge, private val http: SpotifyHttp) : Podcasts {
     private suspend fun showUnion(uri: Uri) = gql.query("queryShowMetadataV2", vars(
         "uri" to uri, "includeContentCapabilityTrait" to true, "includeEpisodeContentRatingsV2" to true,
@@ -197,6 +219,20 @@ class SpotifyPodcasts(private val gql: Gql, private val bridge: Bridge, private 
     override suspend fun episode(uri: Uri): Episode =
         episode(gql.query("getEpisodeOrChapter", vars("uri" to uri, "includeEpisodeContentRatingsV2" to true))
             .entity("data.episodeUnionV2", "getEpisodeOrChapter")) ?: throw GqlException("getEpisodeOrChapter", "bad episode")
+
+    /**
+     * Spotify's own transcript read-along response contains chapter heading sections with
+     * millisecond start positions. It is separate from the episode description (and is where
+     * Spotify's auto-generated chapter headings are exposed to its mobile listener UI).
+     * Episodes without a transcript simply return no chapter sections.
+     */
+    override suspend fun episodeChapters(uri: Uri): List<app.myspoti.api.EpisodeChapter> {
+        val id = idOf(uri)
+        val transcript = http.getJson(
+            "https://spclient.wg.spotify.com/transcript-read-along/v2/episode/$id?format=json",
+        ) ?: return emptyList()
+        return spotifyEpisodeChapters(transcript)
+    }
 
     override suspend fun audiobook(uri: Uri): Audiobook {
         val d = showUnion(uri)

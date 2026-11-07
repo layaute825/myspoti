@@ -491,28 +491,140 @@ object SongPlayer {
     }
 
     /**
-     * The saved session's position kept current while a song plays (every [POSITION_SAVE_MS]): saved on
-     * track changes and play/pause only, an app closed mid-song resumed it from its start (reported
-     * with an extension's song after a relaunch).
+     * Resolve the episode from the audio source itself. The last-track preference is only a
+     * single-player snapshot and must not decide which podcast's history gets persisted.
      */
+    private fun currentPodcastEpisodeId(): String? {
+        if (LocalPlayer.active.value) {
+            return LocalPlayer.current()
+                ?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+                ?.takeIf { it.startsWith("episode:") }
+                ?.removePrefix("episode:")
+                ?.takeIf { it.isNotBlank() }
+        }
+        return _nowPlaying.value.uri
+            .takeIf { it.startsWith("spotify:episode:") }
+            ?.removePrefix("spotify:episode:")
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun saveCurrentEpisodeProgress() {
+        val id = currentPodcastEpisodeId() ?: return
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), getDuration())
+    }
+
     private val savePosition = object : Runnable {
         override fun run() {
             main.postDelayed(this, POSITION_SAVE_MS)
             if (!(playing || LocalPlayer.isPlaying())) return
+
+            val position = getCurrentPosition()
+            val currentUri = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
+
+            // This snapshot only restores the player card. Podcast history is saved independently.
             val p = lastTrackPrefs()
-            val uri = p.getString("uri", "").orEmpty()
-            val now = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
-            if (uri.isBlank() || uri != now) return
-            p.edit().putLong("position", getCurrentPosition()).apply()
+            val savedUri = p.getString("uri", "").orEmpty()
+            if (savedUri.isNotBlank() && savedUri == currentUri) {
+                p.edit().putLong("position", position).apply()
+            }
+
+            currentPodcastEpisodeId()?.let { episodeId ->
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, position, getDuration())
+            }
         }
     }
     init { main.postDelayed(savePosition, POSITION_SAVE_MS) }
+
+    private const val PODCAST_RESUME_DELAY_MS = 500L
+    private const val PODCAST_RESUME_READY_TIMEOUT_MS = 10_000L
+
+    @Volatile private var explicitlyStartedEpisodeUri = ""
+    @Volatile private var explicitlyStartedEpisodeUntil = 0L
+    @Volatile private var explicitlyStartedEpisodePositionMs = -1L
+
+    /**
+     * Spotify can acknowledge play(uri, positionMs) while its Web Player still starts the media
+     * item at 0:00. Do not assume that asking for a position means that it was actually applied:
+     * wait until this exact episode is ready, compare its real position with the requested one,
+     * then repair it through the same verified seek path used by the seek bar.
+     */
+    private fun restorePodcastEpisodePosition(uri: String, requestedPosition: () -> Long, source: String) {
+        val initialTarget = requestedPosition()
+        if (com.music.spotui.data.preferences.podcastResumePosition(initialTarget, 0L) == null) return
+
+        scope.launch {
+            kotlinx.coroutines.delay(PODCAST_RESUME_DELAY_MS)
+            if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri)) return@launch
+
+            // A 500 ms delay alone is not enough: the Web Player may still be opening the episode.
+            // Wait for a non-buffering state for this URI, but remain bounded if Spotify stalls.
+            kotlinx.coroutines.withTimeoutOrNull(PODCAST_RESUME_READY_TIMEOUT_MS) {
+                api.player.state.first { state ->
+                    state != null && state.item?.uri == uri && !state.isBuffering
+                }
+            }
+            // The player may have moved on while the readiness wait was suspended.
+            if (_nowPlaying.value.uri != uri || LocalPlayer.active.value || seekHeld(uri) ||
+                api.player.state.value?.item?.uri != uri) return@launch
+
+            // Re-read both the target and the player's state: an older callback must never undo a
+            // newer manual seek, and an already-landed start position must not be sought again.
+            val latestTarget = requestedPosition()
+            val currentState = api.player.state.value?.takeIf { it.item?.uri == uri }
+                ?: return@launch
+            // Never compare against SongPlayer's old clock: during a URI hand-off it may still
+            // describe the episode that was just left.
+            val actualPosition = currentState.positionAt(System.currentTimeMillis())
+            val correction = com.music.spotui.data.preferences.podcastResumePosition(latestTarget, actualPosition)
+                ?: return@launch
+            if (seekHeld(uri)) return@launch
+
+            app.myspoti.host.android.Logbook.log(
+                "podcast: correcting $source start for " + uri.removePrefix("spotify:episode:") +
+                    " from " + actualPosition + " ms to " + correction + " ms",
+            )
+            // seekTo retries and checks the Web Player response; this is not a fire-and-forget seek.
+            seekTo(correction)
+        }
+    }
+
+    private fun resumeSavedPodcastEpisode(uri: String) {
+        val episodeId = uri.removePrefix("spotify:episode:")
+        val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        if (saved <= 2_000L) return
+        // Check again after the player is ready instead of trusting its first state event;
+        // that event can still carry the previous item's position.
+        restorePodcastEpisodePosition(
+            uri = uri,
+            requestedPosition = { com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId) },
+            source = "saved",
+        )
+    }
+
+    private fun consumeExplicitEpisodeStart(uri: String): Long? {
+        val now = SystemClock.elapsedRealtime()
+        if (now > explicitlyStartedEpisodeUntil) {
+            explicitlyStartedEpisodeUri = ""
+            explicitlyStartedEpisodeUntil = 0L
+            explicitlyStartedEpisodePositionMs = -1L
+            return null
+        }
+        if (uri != explicitlyStartedEpisodeUri) return null
+        val position = explicitlyStartedEpisodePositionMs.takeIf { it >= 0L }
+        explicitlyStartedEpisodeUri = ""
+        explicitlyStartedEpisodeUntil = 0L
+        explicitlyStartedEpisodePositionMs = -1L
+        return position
+    }
 
     private fun acceptsSessionUpdates() = Graph.app.getSharedPreferences("myspoti_prefs", Context.MODE_PRIVATE)
         .getBoolean("LoggedIn", false)
 
     /** Call on the main thread before navigating to logout. */
     fun clearSession() {
+        // Keep the current episode's latest position even when the user signs out or the
+        // player session is torn down before the next periodic snapshot.
+        saveCurrentEpisodeProgress()
         main.removeCallbacksAndMessages(null)
         // A play, pause or skip still waiting (a slow page, a page still loading) belongs to the
         // session that ends: it is dropped, not sent once the next account's page is ready.
@@ -522,6 +634,9 @@ object SongPlayer {
         pendingTrackId = null
         pendingItemUri = null
         pendingUntil = 0L
+        explicitlyStartedEpisodeUri = ""
+        explicitlyStartedEpisodeUntil = 0L
+        explicitlyStartedEpisodePositionMs = -1L
         intentUri = ""; intentUntil = 0L
         wantPlayingUntil = 0L; wantPausedUntil = 0L
         // Its own end puts nothing back on screen: the seq it ends with is no longer the last.
@@ -713,8 +828,16 @@ object SongPlayer {
             positionMs = reported
             positionAt = SystemClock.elapsedRealtime()
         }
-        val leftId = trackIdOf(_nowPlaying.value.uri)
-        val trackChanged = uri != _nowPlaying.value.uri
+        val previousUri = _nowPlaying.value.uri
+        val leftId = trackIdOf(previousUri)
+        val trackChanged = uri != previousUri
+        // Save this episode before the player replaces its duration and position with the next item.
+        // Natural completion reaches the duration; an intentional Next preserves partial progress.
+        if (trackChanged && previousUri.startsWith("spotify:episode:")) {
+            com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                previousUri.removePrefix("spotify:episode:"), predicted, lengthBefore,
+            )
+        }
         // Repeat once on a Spotify song: the page's repeat-track loops for good. The page seen
         // starting the song again is its one replay: repeat goes off there, and that replay ends
         // into the next song. Another song under repeat-track (a skip, a pick) cancels it.
@@ -749,6 +872,27 @@ object SongPlayer {
             prev = s.previous?.let(::songOf),
             next = s.next?.let(::songOf),
         )
+        if (trackChanged && uri.startsWith("spotify:episode:")) {
+            val episodeId = uri.removePrefix("spotify:episode:")
+            // Reaching a completed episode again from Spotify's queue is a real replay. Clear the
+            // local completion marker now that this episode has actually become the playing item.
+            if (playing && com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+            }
+            val explicitStart = consumeExplicitEpisodeStart(uri)
+            if (explicitStart != null) {
+                // An explicit start can be a deliberate rewind (for example, tapping an earlier
+                // chapter). Persist it locally before Spotify's first state can report stale 0:00.
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                    uri.removePrefix("spotify:episode:"), explicitStart, durationMs, allowRewind = true,
+                )
+                // Even explicit podcast starts (saved progress or a chapter tap) are verified:
+                // Spotify occasionally ignores the position passed to play() and opens at 0:00.
+                restorePodcastEpisodePosition(uri, { explicitStart }, "requested")
+            } else {
+                resumeSavedPodcastEpisode(uri)
+            }
+        }
         // Started or moved on without Myspoti asking (another device, a transfer back here): the
         // Connect mirror sends it back through the extensions. After this state's own follow-ups.
         val moved = trackChanged || (!wasPlaying && playing)
@@ -1205,6 +1349,12 @@ object SongPlayer {
         songs: List<SongsModel>? = null, askExtensions: Boolean = true, alone: Boolean = false,
     ) {
         userActed()
+        // A newer play request cancels any start-position correction still waiting for the
+        // previous episode to appear in Spotify's state stream.
+        explicitlyStartedEpisodeUri = ""
+        explicitlyStartedEpisodeUntil = 0L
+        explicitlyStartedEpisodePositionMs = -1L
+        saveCurrentEpisodeProgress()
         // Data saver on mobile data: Spotify can't stream, only downloads and Local Files play.
         if (com.music.spotui.data.DataSaver.active) {
             main.post {
@@ -1230,6 +1380,17 @@ object SongPlayer {
         val episodeId = song.removePrefix("episode:").takeIf { song.startsWith("episode:") }
         val trackId = episodeId ?: spotifyTrackIdForPlayback(song) ?: return
         val itemUri = if (episodeId != null) "spotify:episode:$episodeId" else SPOTIFY_TRACK_PREFIX + trackId
+        val requestedPositionMs = positionMs ?: episodeId?.let {
+            com.music.spotui.data.preferences.podcastResumePosition(
+                com.music.spotui.data.preferences.PodcastPrefs.positionMs(it),
+                0L,
+            )
+        }
+        if (episodeId != null && requestedPositionMs != null) {
+            explicitlyStartedEpisodeUri = itemUri
+            explicitlyStartedEpisodeUntil = SystemClock.elapsedRealtime() + 30_000L
+            explicitlyStartedEpisodePositionMs = requestedPositionMs
+        }
         val ctx = if (alone) null else contextUri ?: contextRegistry[song]
         // What a smart shuffle ending brings back: the order of the last play that was not one.
         if (ctx != null) {
@@ -1245,9 +1406,9 @@ object SongPlayer {
                 Log.d(TAG, "playing $itemUri in ${ctx ?: "no context"}: ${queueTag()}")
                 if (ctx != null) {
                     val sent = order?.takeIf { ctx == contextUri }
-                    api.player.play(ctx, trackUri = itemUri, index = rowIndex(song, ctx, sent), positionMs = positionMs, order = sent)
+                    api.player.play(ctx, trackUri = itemUri, index = rowIndex(song, ctx, sent), positionMs = requestedPositionMs, order = sent)
                 }
-                else api.player.play(itemUri)
+                else api.player.play(itemUri, positionMs = requestedPositionMs)
             }
         }
     }
@@ -1513,7 +1674,7 @@ object SongPlayer {
             positionMs = end.takeIf { it > 0 }, askExtensions = false)
     }
 
-    private const val POSITION_SAVE_MS = 10_000L
+    private const val POSITION_SAVE_MS = 5_000L
 
     /** How long a song sent to Spotify for want of the extensions may take to start there. */
     private const val FALLBACK_START_MS = 10_000L
@@ -1778,7 +1939,8 @@ object SongPlayer {
 
     /** [send] false: the engine has paused already (the sleep timer's fade). */
     private fun pauseSilently(send: Boolean = true) {
-        if (LocalPlayer.active.value) { LocalPlayer.pause(); return }
+        if (LocalPlayer.active.value) { saveCurrentEpisodeProgress(); LocalPlayer.pause(); return }
+        saveCurrentEpisodeProgress()
         intendPaused()
         positionMs = getCurrentPosition(); positionAt = SystemClock.elapsedRealtime(); playing = false
         if (send) { transport(pullBack = false) { api.player.pause() }; jamFollowUp(wantPaused = true) }
@@ -2357,6 +2519,12 @@ object SongPlayer {
 
     fun seekTo(ms: Long) {
         if (LocalPlayer.active.value) { LocalPlayer.seekTo(ms); return }
+        // A backwards seek is intentional user input, unlike an older Spotify state snapshot.
+        currentPodcastEpisodeId()?.let { episodeId ->
+            com.music.spotui.data.preferences.PodcastPrefs.saveProgress(
+                episodeId, ms.coerceAtLeast(0L), getDuration(), allowRewind = true,
+            )
+        }
         cancelBurst()
         val now = SystemClock.elapsedRealtime()
         positionMs = ms
@@ -3118,6 +3286,31 @@ object SongPlayer {
     }
 
     fun isPlaying(): Boolean = if (LocalPlayer.active.value && !routing) LocalPlayer.isPlaying() else playing
+
+    /** True for both Spotify-streamed and locally downloaded copies of this podcast episode. */
+    fun isEpisodeCurrent(episodeId: String): Boolean {
+        if (episodeId.isBlank()) return false
+        if (_nowPlaying.value.uri == "spotify:episode:$episodeId") return true
+        if (!LocalPlayer.active.value || routing) return false
+        val track = LocalPlayer.current() ?: return false
+        return com.music.spotui.data.offline.OfflineStore.byLocalId(track.id)?.trackId == "episode:$episodeId"
+    }
+
+    /**
+     * The best known position for an episode: persisted progress plus the live player clock when
+     * this exact episode is the active audio source. Show pages use this even after being reopened,
+     * because Spotify's show endpoint can lag behind the current listening session.
+     */
+    fun podcastPositionMs(episodeId: String): Long {
+        if (episodeId.isBlank()) return 0L
+        val saved = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        val live = if (!routing && currentPodcastEpisodeId() == episodeId) getCurrentPosition() else 0L
+        return com.music.spotui.data.preferences.podcastDisplayedPositionMs(0L, saved, live)
+    }
+
+    /** Flush the active episode before a podcast page is disposed or navigation leaves its list. */
+    fun savePodcastProgressNow() = saveCurrentEpisodeProgress()
+
     fun getDuration(): Long = if (LocalPlayer.active.value && !routing) LocalPlayer.duration() else durationMs
 
     fun getCurrentPosition(): Long {

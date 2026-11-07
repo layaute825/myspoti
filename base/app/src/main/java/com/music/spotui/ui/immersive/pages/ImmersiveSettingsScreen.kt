@@ -608,6 +608,17 @@ private fun CrossfadePage(back: () -> Unit) {
                 row { ImmersiveChoiceRow(stringResource(label), selected = automix.nextStyle == i, onClick = { automix.changeNextStyle(i) }) }
             }
         }
+        if (mode == TransitionMode.AUTOMIX) immersiveGroup("automix-blend-bars", headerRes = R.string.settings_automix_blend_bars, footerRes = R.string.settings_automix_blend_bars_detail) {
+            listOf(4, 8, 16, 32).forEach { bars ->
+                row {
+                    ImmersiveChoiceRow(
+                        stringResource(R.string.settings_automix_blend_bars_value, bars),
+                        selected = automix.blendBars == bars,
+                        onClick = { automix.changeBlendBars(bars) },
+                    )
+                }
+            }
+        }
         if (mode == TransitionMode.AUTOMIX) immersiveGroup("automix-length", headerRes = R.string.settings_automix_length, footerRes = R.string.settings_automix_length_detail) {
             listOf(R.string.settings_automix_length_short, R.string.settings_automix_length_auto, R.string.settings_automix_length_long).forEachIndexed { i, label ->
                 row { ImmersiveChoiceRow(stringResource(label), selected = automix.mixLength == i, onClick = { automix.changeMixLength(i) }) }
@@ -676,6 +687,16 @@ private fun DownloadsPage(navController: NavController, open: (SettingsPage) -> 
         if (ext != null && extHeader != null) extensionSectionGroup(ext, extHeader)
         // Where downloads come from: the download-source extensions, in the order they are asked.
         sourcesLink(app.myspoti.extensions.Action.DOWNLOAD_SOURCE, open)
+        immersiveGroup("podcast-finish") {
+            row {
+                ImmersiveSwitchRow(
+                    stringResource(R.string.podcast_delete_after_finish),
+                    checked = com.music.spotui.data.preferences.PodcastPrefs.deleteAfterFinish,
+                    onChecked = com.music.spotui.data.preferences.PodcastPrefs::updateDeleteAfterFinish,
+                    detail = stringResource(R.string.podcast_delete_after_finish_detail),
+                )
+            }
+        }
         if (com.music.spotui.extensions.Extensions.sources(app.myspoti.extensions.Action.DOWNLOAD_SOURCE).isEmpty()) immersiveGroup("source") {
             row {
                 ImmersiveGroupRow(

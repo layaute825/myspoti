@@ -246,6 +246,8 @@ interface Podcasts {
     suspend fun audioUrl(uri: Uri): EpisodeAudio
     suspend fun episodes(uri: Uri, offset: Int = 0, limit: Int = 50): Page<Episode>
     suspend fun episode(uri: Uri): Episode
+    /** Chapter headings from Spotify's timestamped transcript, when this episode has one. */
+    suspend fun episodeChapters(uri: Uri): List<EpisodeChapter>
     suspend fun audiobook(uri: Uri): Audiobook
     suspend fun chapters(uri: Uri, offset: Int = 0, limit: Int = 50): Page<Episode>
     /** Episodes the user saved ("Your Episodes"). */

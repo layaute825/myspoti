@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Spotify-style Search outline; selection is handled by the navigation tint. -->
+<!-- Spotify Encore Search glyph (24x24), adapted from the SVG used by the Spotify web navigation. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,5 +7,5 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M10.8,3a7.8,7.8 0,1 0,4.8 13.95l4.65,4.65a1,1 0,0 0,1.42 -1.42l-4.65,-4.65A7.8,7.8 0,0 0,10.8 3zM10.8,5a5.8,5.8 0,1 1,0 11.6a5.8,5.8 0,0 1,0 -11.6z"/>
+        android:pathData="M16.736,16.262A8.457,8.457 0,0 0,19,10.5a8.5,8.5 0,1 0,-3.779,7.067l4.424,5.18 1.521,-1.299 -4.43,-5.186zM10.5,17C6.916,17 4,14.084 4,10.5S6.916,4 10.5,4 17,6.916 17,10.5 14.084,17 10.5,17z" />
 </vector>
