@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -82,6 +83,10 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
     val vm: ShowViewModel = viewModel()
     val context = LocalContext.current
     LaunchedEffect(showId) { vm.loadShow(showId) }
+    // A show page can be left while its episode keeps playing. Flush progress at that boundary.
+    DisposableEffect(showId) {
+        onDispose { SongPlayer.savePodcastProgressNow() }
+    }
 
     val pageState by vm.page.collectAsState()
     val page = (pageState as? Response.Success)?.data
@@ -92,7 +97,7 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
         if (episode.isEpisode) episode.copy(
             playedPositionMs = maxOf(
                 episode.playedPositionMs,
-                com.music.spotui.data.preferences.PodcastPrefs.positionMs(episode.url.removePrefix("episode:")),
+                SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
             ),
         ) else episode
     }
@@ -109,7 +114,7 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
         val song = items.getOrNull(index) ?: return
         vm.updateQueue(items)
         val episodeId = song.url.removePrefix("episode:")
-        val resumeAt = if (song.isEpisode) com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId) else 0L
+        val resumeAt = if (song.isEpisode) SongPlayer.podcastPositionMs(episodeId) else 0L
         if (song.isEpisode && com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
             com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
         }
