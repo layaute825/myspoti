@@ -126,7 +126,7 @@ internal fun ImmersiveEpisodeRow(
             ) {
                 Box(
                     Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .immersiveClickable(onClick = onMenu, pressedScale = 0.9f),
                     contentAlignment = Alignment.Center,
@@ -139,7 +139,7 @@ internal fun ImmersiveEpisodeRow(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                EpisodeDownloadButton(episode, size = 24.dp)
+                EpisodeDownloadButton(episode, size = 30.dp)
                 Spacer(Modifier.width(8.dp))
                 PlayDisc(playing = playing, onClick = onPlay)
             }
@@ -153,7 +153,7 @@ internal fun ImmersiveEpisodeRow(
 internal fun PlayDisc(playing: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .size(40.dp)
+            .size(44.dp)
             .immersiveClickable(onClick = { Haptics.click(); onClick() }, pressedScale = 0.9f)
             .clip(CircleShape)
             .background(Immersive.Accent),

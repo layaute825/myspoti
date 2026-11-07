@@ -105,7 +105,6 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
     var tab by remember { mutableStateOf(0) }
     var oldestFirst by remember { mutableStateOf(false) }
     var menuSong by remember { mutableStateOf<SongsModel?>(null) }
-    val np by SongPlayer.nowPlaying
 
     fun playAt(index: Int) {
         val song = items.getOrNull(index) ?: return
@@ -236,7 +235,7 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                 com.music.spotui.ui.components.SwipeToQueue(song = ep) {
                 EpisodeRow(
                     episode = ep,
-                    playing = np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" && SongPlayer.isPlaying(),
+                    playing = SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:")) && SongPlayer.isPlaying(),
                     finished = vm.isFinished(ep),
                     isNew = vm.isNew(ep),
                     onPlay = {
