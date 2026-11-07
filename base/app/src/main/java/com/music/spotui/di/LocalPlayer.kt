@@ -225,7 +225,16 @@ object LocalPlayer {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             log("isPlaying $isPlaying at ${p.currentPosition} ms")
             if (isPlaying) errors.played()
-            if (isPlaying) tick.run()
+            if (isPlaying) {
+                current()?.let { track ->
+                    podcastEpisodeId(track)?.let { episodeId ->
+                        if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+                        }
+                    }
+                }
+                tick.run()
+            }
             // A station that plays on for a while has its reconnect tries back (see reconnectRadio).
             handler.removeCallbacks(radioSteady)
             if (isPlaying && current()?.isRadio == true) handler.postDelayed(radioSteady, RADIO_STEADY_MS)
