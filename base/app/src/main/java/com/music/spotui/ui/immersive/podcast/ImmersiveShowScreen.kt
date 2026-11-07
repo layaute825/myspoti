@@ -95,9 +95,10 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
     // Overlay locally remembered progress on Spotify's episode rows, keyed by episode ID.
     val items = page?.items.orEmpty().map { episode ->
         if (episode.isEpisode) episode.copy(
-            playedPositionMs = maxOf(
-                episode.playedPositionMs,
-                SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
+            playedPositionMs = com.music.spotui.data.preferences.podcastDisplayedPositionMs(
+                serverPositionMs = episode.playedPositionMs,
+                savedPositionMs = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episode.url.removePrefix("episode:")),
+                livePositionMs = SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
             ),
         ) else episode
     }
