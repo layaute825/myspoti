@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_blend_bars">Maximum blend length</string>
+    <string name="settings_automix_blend_bars_detail">Limits a beat-matched transition to this many bars when the music allows it.</string>
+    <string name="settings_automix_blend_bars_value">Up to %1$d bars</string>
+    <string name="settings_automix_blend_bars_4">4 bars</string>
+    <string name="settings_automix_blend_bars_8">8 bars</string>
+    <string name="settings_automix_blend_bars_16">16 bars</string>
+    <string name="settings_automix_blend_bars_32">32 bars</string>
+</resources>

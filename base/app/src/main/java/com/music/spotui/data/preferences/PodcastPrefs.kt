@@ -3,6 +3,7 @@ package com.music.spotui.data.preferences
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.music.spotui.data.entity.SongsModel
 import com.music.spotui.di.Graph
@@ -43,6 +44,155 @@ object PodcastPrefs {
 
     /** Bumped on every change a mark depends on, so a composable reading [hasNew] redraws. */
     private var tick by mutableIntStateOf(0)
+
+    /** Delete a podcast file automatically after the episode reaches its end. */
+    var deleteAfterFinish by mutableStateOf(prefs().getBoolean("delete_episode_after_finish", false))
+        private set
+
+    fun updateDeleteAfterFinish(value: Boolean) {
+        deleteAfterFinish = value
+        prefs().edit().putBoolean("delete_episode_after_finish", value).apply()
+        tick++
+    }
+
+    /** Whether new releases of this show should be queued for download. */
+    fun autoDownload(showId: String): Boolean {
+        @Suppress("UNUSED_VARIABLE") val read = tick
+        return showId.isNotBlank() && prefs().getBoolean("auto_download:$showId", false)
+    }
+
+    /**
+     * Enabling auto-download starts from the newest episode already visible: it does not
+     * unexpectedly download a show's entire back catalogue. Later releases are queued on refresh.
+     */
+    fun setAutoDownload(
+        showId: String,
+        enabled: Boolean,
+        newestKnownEpisodes: List<SongsModel> = emptyList(),
+    ) {
+        if (showId.isBlank()) return
+        val newestDate = newestKnownEpisodes.maxOfOrNull { it.releaseDate }.orEmpty()
+        val latestIds = newestKnownEpisodes.filter { it.releaseDate == newestDate }.map { it.url }.toSet()
+        val edit = prefs().edit().putBoolean("auto_download:$showId", enabled)
+        if (enabled && newestDate.isNotBlank()) {
+            edit.putString("auto_cursor:$showId", newestDate)
+            edit.putStringSet("auto_seen:$showId", latestIds)
+        }
+        edit.apply()
+        tick++
+        com.music.spotui.data.offline.PodcastAutoDownloadScheduler.schedule(Graph.app)
+    }
+
+    /** IDs of the shows whose automatic download option is enabled. */
+    fun autoDownloadShowIds(): Set<String> = prefs().all.entries
+        .asSequence()
+        .filter { it.key.startsWith("auto_download:") && it.value == true }
+        .map { it.key.removePrefix("auto_download:") }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+    /** New releases since the last auto-download check, including a second episode dated today. */
+    fun autoDownloadCandidates(showId: String, episodes: List<SongsModel>): List<SongsModel> {
+        if (!autoDownload(showId) || episodes.isEmpty()) return emptyList()
+        val p = prefs()
+        val cursor = p.getString("auto_cursor:$showId", "").orEmpty()
+        val seen = p.getStringSet("auto_seen:$showId", emptySet()).orEmpty()
+        val dated = episodes.filter { it.isEpisode && it.releaseDate.isNotBlank() }
+        if (cursor.isBlank()) {
+            val newest = dated.maxOfOrNull { it.releaseDate }.orEmpty()
+            if (newest.isNotBlank()) {
+                p.edit().putString("auto_cursor:$showId", newest)
+                    .putStringSet("auto_seen:$showId", dated.filter { it.releaseDate == newest }.map { it.url }.toSet())
+                    .apply()
+            }
+            tick++
+            return emptyList()
+        }
+        val candidates = dated.filter {
+            it.releaseDate > cursor || (it.releaseDate == cursor && it.url !in seen)
+        }.sortedBy { it.releaseDate }
+        if (candidates.isNotEmpty()) {
+            val newest = maxOf(cursor, candidates.maxOf { it.releaseDate })
+            val newestIds = dated.filter { it.releaseDate == newest }.map { it.url }.toMutableSet()
+            if (newest == cursor) newestIds.addAll(seen)
+            p.edit().putString("auto_cursor:$showId", newest)
+                .putStringSet("auto_seen:$showId", newestIds)
+                .apply()
+            tick++
+        }
+        return candidates
+    }
+
+    fun isCompleted(episodeId: String): Boolean {
+        if (episodeId.isBlank()) return false
+        @Suppress("UNUSED_VARIABLE") val read = tick
+        return prefs().getBoolean("episode_completed:$episodeId", false)
+    }
+
+    /** Last listened position for this episode (ms); completed episodes start from the beginning. */
+    fun positionMs(episodeId: String): Long {
+        if (episodeId.isBlank()) return 0L
+        @Suppress("UNUSED_VARIABLE") val read = tick
+        val p = prefs()
+        if (p.getBoolean("episode_completed:$episodeId", false)) return 0L
+        return p.getLong("episode_position:$episodeId", 0L).coerceAtLeast(0L)
+    }
+
+    /** True when this phone already has a snapshot, including an intentional reset to 0:00. */
+    fun hasStoredProgress(episodeId: String): Boolean {
+        if (episodeId.isBlank()) return false
+        val p = prefs()
+        return p.contains("episode_position:$episodeId") ||
+            p.getBoolean("episode_completed:$episodeId", false)
+    }
+
+    /**
+     * Persist independent episode progress. Older Spotify/player snapshots are ignored instead
+     * of replacing a newer local position. Only an explicit seek or replay may move it backwards.
+     * A completed episode clears its resume point and, when requested, removes its download once.
+     */
+    @Synchronized
+    fun saveProgress(
+        episodeId: String,
+        positionMs: Long,
+        durationMs: Long,
+        allowRewind: Boolean = false,
+    ) {
+        if (episodeId.isBlank() || positionMs < 0L) return
+        val p = prefs()
+        val wasCompleted = p.getBoolean("episode_completed:$episodeId", false)
+        val complete = durationMs > 0L && positionMs >= (durationMs - 1_000L).coerceAtLeast(0L)
+        if (!complete && wasCompleted && !allowRewind) return
+
+        val persistedPosition = if (complete) 0L else {
+            podcastProgressToPersist(
+                previousPositionMs = p.getLong("episode_position:$episodeId", 0L).coerceAtLeast(0L),
+                incomingPositionMs = positionMs,
+                allowRewind = allowRewind,
+            ) ?: return
+        }
+
+        p.edit().apply {
+            if (complete) {
+                putBoolean("episode_completed:$episodeId", true)
+                putLong("episode_position:$episodeId", 0L)
+            } else {
+                remove("episode_completed:$episodeId")
+                putLong("episode_position:$episodeId", persistedPosition)
+            }
+        }.apply()
+        tick++
+        if (complete && !wasCompleted && deleteAfterFinish) {
+            com.music.spotui.data.offline.PodcastDownloader.remove("episode:$episodeId")
+        }
+    }
+
+    /** A deliberate replay clears a previous completion marker. */
+    fun resetProgress(episodeId: String) {
+        if (episodeId.isBlank()) return
+        prefs().edit().remove("episode_completed:$episodeId").putLong("episode_position:$episodeId", 0L).apply()
+        tick++
+    }
 
     fun filter(showId: String): EpisodeFilter {
         val p = prefs()

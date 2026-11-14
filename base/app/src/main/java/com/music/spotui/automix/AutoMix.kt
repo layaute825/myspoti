@@ -83,6 +83,19 @@ object AutoMix {
         private set
     fun changeMixLength(value: Int) { mixLength = value; Graph.app.getSharedPreferences(PREFS, 0).edit().putInt("automix_length", value).apply(); com.music.spotui.di.LocalPlayer.autoMixSettingsChanged() }
 
+    /**
+     * Hard upper bound for a beat-matched transition, matching BitChord Web's blend-length choices.
+     * The existing short/auto/long preference still biases the planner below this ceiling.
+     */
+    var blendBars by mutableStateOf(Graph.app.getSharedPreferences(PREFS, 0).getInt("automix_blend_bars", 16).let { if (it in listOf(4, 8, 16, 32)) it else 16 })
+        private set
+    fun changeBlendBars(value: Int) {
+        if (value !in listOf(4, 8, 16, 32)) return
+        blendBars = value
+        Graph.app.getSharedPreferences(PREFS, 0).edit().putInt("automix_blend_bars", value).apply()
+        com.music.spotui.di.LocalPlayer.autoMixSettingsChanged()
+    }
+
     /** Optional hard bounds on overlap seconds; minimum 0 is automatic and maximum 0 is unlimited. */
     var minDurationSeconds by mutableStateOf(initialDurationPair.first)
         private set

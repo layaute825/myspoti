@@ -53,9 +53,6 @@ class Bridge(private val host: BridgeHost, scope: CoroutineScope, val clock: () 
     val events: SharedFlow<Pair<String, JsonElement>> = _events
 
     init {
-        // Listening before the constructor returns (undispatched): a page message posted right
-        // after (a call's answer, "ready") reached no collector yet and was lost, the call then
-        // waiting out its whole timeout.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             // A message the bridge did not write (another script, a future page) must never
             // end this collector: it runs on the main thread, where a throw kills the app.

@@ -612,6 +612,17 @@ private fun CrossfadePage(back: () -> Unit) {
                 automix.changeDurationBounds(if (v in 1 until automix.minDurationSeconds) v else automix.minDurationSeconds, v)
             } }
         }
+        if (mode == TransitionMode.AUTOMIX) immersiveGroup("automix-blend-bars", headerRes = R.string.settings_automix_blend_bars, footerRes = R.string.settings_automix_blend_bars_detail) {
+            listOf(4, 8, 16, 32).forEach { bars ->
+                row {
+                    ImmersiveChoiceRow(
+                        stringResource(R.string.settings_automix_blend_bars_value, bars),
+                        selected = automix.blendBars == bars,
+                        onClick = { automix.changeBlendBars(bars) },
+                    )
+                }
+            }
+        }
         if (mode == TransitionMode.AUTOMIX) immersiveGroup("automix-tempo", headerRes = R.string.settings_automix_tempo, footerRes = R.string.settings_automix_tempo_detail) {
             listOf(R.string.settings_automix_tempo_strict, R.string.settings_automix_tempo_normal, R.string.settings_automix_tempo_wide).forEachIndexed { i, label ->
                 row { ImmersiveChoiceRow(stringResource(label), selected = automix.tempoRange == i, onClick = { automix.changeTempoRange(i) }) }

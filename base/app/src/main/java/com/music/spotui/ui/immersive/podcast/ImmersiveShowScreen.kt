@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,12 +22,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Podcasts
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -78,12 +83,25 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
     val vm: ShowViewModel = viewModel()
     val context = LocalContext.current
     LaunchedEffect(showId) { vm.loadShow(showId) }
+    // A show page can be left while its episode keeps playing. Flush progress at that boundary.
+    DisposableEffect(showId) {
+        onDispose { SongPlayer.savePodcastProgressNow() }
+    }
 
     val pageState by vm.page.collectAsState()
     val page = (pageState as? Response.Success)?.data
     val show = page?.show
     val audiobook = page?.audiobook == true
-    val items = page?.items.orEmpty()
+    // Overlay locally remembered progress on Spotify's episode rows, keyed by episode ID.
+    val items = page?.items.orEmpty().map { episode ->
+        if (episode.isEpisode) episode.copy(
+            playedPositionMs = com.music.spotui.data.preferences.podcastDisplayedPositionMs(
+                serverPositionMs = episode.playedPositionMs,
+                savedPositionMs = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episode.url.removePrefix("episode:")),
+                livePositionMs = SongPlayer.podcastPositionMs(episode.url.removePrefix("episode:")),
+            ),
+        ) else episode
+    }
     val displayName = show?.name?.takeIf { it.isNotBlank() } ?: showName
     val cover = page?.coverUri.orEmpty()
 
@@ -96,7 +114,12 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
     fun playAt(index: Int) {
         val song = items.getOrNull(index) ?: return
         vm.updateQueue(items)
-        SongPlayer.playSong(song.url, context, contextUri = "spotify:show:$showId")
+        val episodeId = song.url.removePrefix("episode:")
+        val resumeAt = if (song.isEpisode) SongPlayer.podcastPositionMs(episodeId) else 0L
+        if (song.isEpisode && com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+        }
+        SongPlayer.playSong(song.url, context, contextUri = "spotify:show:$showId", positionMs = resumeAt.takeIf { it > 0L })
         vm.updateSongState(song.coverUri, song.title, song.singer, true, song.id, index, song.album)
     }
 
@@ -123,7 +146,9 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
         Box(Modifier.fillMaxSize().background(Immersive.Page)) {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = Immersive.BottomChrome),
+                contentPadding = PaddingValues(
+                    bottom = Immersive.BottomChrome + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp,
+                ),
                 modifier = Modifier.fillMaxSize().immersiveHazeSource(),
             ) {
                 item(key = "header") {
@@ -132,6 +157,9 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
                         name = displayName,
                         cover = cover,
                         following = vm.following.value,
+                        autoDownload = vm.autoDownload.value,
+                        showAutoDownload = !audiobook,
+                        onAutoDownload = { on -> vm.setAutoDownload(showId, on) },
                         onFollow = { on ->
                             Haptics.toggle(on)
                             vm.setFollow(showId, on)
@@ -201,9 +229,10 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
                     ImmersiveMessageState(stringResource(R.string.show_empty))
                 }
                 if (tab == 0) items(rows, key = { it.url }) { ep ->
+                    com.music.spotui.ui.components.SwipeToQueue(song = ep) {
                     ImmersiveEpisodeRow(
                         episode = ep,
-                        playing = np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" && SongPlayer.isPlaying(),
+                        playing = (np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" || SongPlayer.isEpisodeCurrent(ep.url.removePrefix("episode:"))) && SongPlayer.isPlaying(),
                         finished = vm.isFinished(ep),
                         isNew = vm.isNew(ep),
                         onPlay = {
@@ -214,6 +243,7 @@ fun ImmersiveShowScreen(navController: NavController, showId: String, showName: 
                         onMenu = { menuSong = ep },
                         modifier = rowPlacement(),
                     )
+                    }
                 }
             }
             ImmersiveTopBar(
@@ -231,6 +261,9 @@ private fun ShowHeader(
     name: String,
     cover: String,
     following: Boolean,
+    autoDownload: Boolean,
+    showAutoDownload: Boolean,
+    onAutoDownload: (Boolean) -> Unit,
     onFollow: (Boolean) -> Unit,
 ) {
     Box(Modifier.fillMaxWidth()) {
@@ -292,6 +325,16 @@ private fun ShowHeader(
                 modifier = Modifier.widthIn(min = 170.dp),
                 onClick = { onFollow(!following) },
             )
+            if (showAutoDownload) {
+                Spacer(Modifier.height(8.dp))
+                ImmersiveButton(
+                    text = stringResource(if (autoDownload) R.string.podcast_auto_download_on else R.string.podcast_auto_download_off),
+                    icon = Icons.Rounded.Download,
+                    filled = autoDownload,
+                    modifier = Modifier.widthIn(min = 210.dp),
+                    onClick = { onAutoDownload(!autoDownload) },
+                )
+            }
         }
     }
 }

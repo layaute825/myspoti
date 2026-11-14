@@ -515,17 +515,45 @@ object SongPlayer {
      * track changes and play/pause only, an app closed mid-song resumed it from its start (reported
      * with an extension's song after a relaunch).
      */
+    private fun currentPodcastEpisodeId(): String? {
+        if (LocalPlayer.active.value) {
+            return LocalPlayer.current()
+                ?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id)?.trackId }
+                ?.takeIf { it.startsWith("episode:") }
+                ?.removePrefix("episode:")
+                ?.takeIf { it.isNotBlank() }
+        }
+        return _nowPlaying.value.uri
+            .takeIf { it.startsWith("spotify:episode:") }
+            ?.removePrefix("spotify:episode:")
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun saveCurrentEpisodeProgress() {
+        val id = currentPodcastEpisodeId() ?: return
+        com.music.spotui.data.preferences.PodcastPrefs.saveProgress(id, getCurrentPosition(), getDuration())
+    }
+
     private val savePosition = object : Runnable {
         override fun run() {
-            // Nothing plays: a look now and then for a song that started, not a wake every ten seconds.
+            // Save frequently while playing, but avoid waking the main thread often while idle.
             val on = playing || LocalPlayer.isPlaying()
             main.postDelayed(this, if (on) POSITION_SAVE_MS else POSITION_IDLE_MS)
             if (!on) return
+
+            val position = getCurrentPosition()
+            val currentUri = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
+
+            // Keep the general last-track snapshot in sync, without letting it own podcast history.
             val p = lastTrackPrefs()
-            val uri = p.getString("uri", "").orEmpty()
-            val now = if (LocalPlayer.active.value) localSpotifyUri(LocalPlayer.current()) else _nowPlaying.value.uri
-            if (uri.isBlank() || uri != now) return
-            p.edit().putLong("position", getCurrentPosition()).apply()
+            val savedUri = p.getString("uri", "").orEmpty()
+            if (savedUri.isNotBlank() && savedUri == currentUri) {
+                p.edit().putLong("position", position).apply()
+            }
+
+            currentPodcastEpisodeId()?.let { episodeId ->
+                com.music.spotui.data.preferences.PodcastPrefs.saveProgress(episodeId, position, getDuration())
+            }
         }
     }
     init { main.postDelayed(savePosition, POSITION_SAVE_MS) }
@@ -1589,7 +1617,7 @@ object SongPlayer {
             positionMs = end.takeIf { it > 0 }, askExtensions = false)
     }
 
-    private const val POSITION_SAVE_MS = 10_000L
+    private const val POSITION_SAVE_MS = 5_000L
     /** How often the position save looks for a song playing while none does. */
     private const val POSITION_IDLE_MS = 30_000L
 

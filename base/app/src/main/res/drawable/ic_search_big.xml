@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Material Icons "search" (Google, Apache License 2.0). Tinted by the caller. -->
+<!-- Spotify Encore Search glyph (24x24), adapted from the SVG used by the Spotify web navigation. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="23dp" android:height="23dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z" />
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16.736,16.262A8.457,8.457 0,0 0,19,10.5a8.5,8.5 0,1 0,-3.779,7.067l4.424,5.18 1.521,-1.299 -4.43,-5.186zM10.5,17C6.916,17 4,14.084 4,10.5S6.916,4 10.5,4 17,6.916 17,10.5 14.084,17 10.5,17z" />
 </vector>

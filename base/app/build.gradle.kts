@@ -154,6 +154,7 @@ dependencies {
     // AutoMix: song analysis and transition planning (pure Kotlin), Beat This on ONNX Runtime.
     implementation(project(":automix"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.2")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     // Third-party extensions: the sandbox (Rhino), manifests, packages and catalogues.
     implementation(project(":extensions"))
     // Metadata (search, albums, artists, ISRC) from several providers in the user's order, with signed script updates.

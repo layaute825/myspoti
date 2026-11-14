@@ -795,6 +795,15 @@ private fun TransitionsRow() {
             listOf(R.string.settings_automix_length_short, R.string.settings_automix_length_auto, R.string.settings_automix_length_long),
             automix.mixLength, automix::changeMixLength)
         AutoMixDurationBoundsRow()
+        Choices(R.string.settings_automix_blend_bars, R.string.settings_automix_blend_bars_detail,
+            listOf(
+                R.string.settings_automix_blend_bars_4,
+                R.string.settings_automix_blend_bars_8,
+                R.string.settings_automix_blend_bars_16,
+                R.string.settings_automix_blend_bars_32,
+            ),
+            listOf(4, 8, 16, 32).indexOf(automix.blendBars).coerceAtLeast(0),
+            { automix.changeBlendBars(listOf(4, 8, 16, 32)[it]) })
         OptionRow(stringResource(R.string.settings_automix_performance), stringResource(R.string.settings_automix_performance_detail),
             checked = automix.performancePriority, onChecked = automix::changePerformancePriority)
         Choices(R.string.settings_automix_tempo, R.string.settings_automix_tempo_detail,

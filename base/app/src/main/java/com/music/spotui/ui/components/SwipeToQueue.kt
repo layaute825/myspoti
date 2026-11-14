@@ -52,6 +52,7 @@ fun SwipeToQueue(
     strip: Color = com.music.spotui.ui.theme.AppAccent,
     iconTint: Color = Color.Black,
     background: Color = com.music.spotui.ui.theme.AppBackground,
+    onQueue: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -63,7 +64,8 @@ fun SwipeToQueue(
     var armed by remember { mutableStateOf(false) }
     // Read at the release, not when the gesture started: a row reused for another song.
     val current by rememberUpdatedState(song)
-    val queueable = SongQueue.canQueue(song)
+    val queueAction by rememberUpdatedState(onQueue)
+    val queueable = SongQueue.canQueue(song) || song.isEpisode || onQueue != null
     // The offset moves every drag and spring frame: read it through derived state so only the
     // strip's two visual thresholds, not the whole row, recompose.
     val revealed by remember(offset) { derivedStateOf { offset.value != 0f } }
@@ -93,7 +95,16 @@ fun SwipeToQueue(
                 .then(if (!queueable) Modifier else Modifier.pointerInput(song.id) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            if (armed) SongQueue.add(context, current)
+                            if (armed) {
+                                when {
+                                    queueAction != null -> queueAction?.invoke()
+                                    current.isEpisode -> com.music.spotui.di.SongPlayer.addEpisodeToQueue(current.url)
+                                    else -> SongQueue.add(context, current)
+                                }
+                                if (queueAction != null || current.isEpisode) {
+                                    android.widget.Toast.makeText(context, context.getString(R.string.snackbar_added_to_queue), android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
                             armed = false
                             scope.launch { offset.animateTo(0f, spring()) }
                         },

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -284,17 +286,36 @@ fun ImmersiveEpisodeScreen(navController: NavController, episodeId: String, fall
     LaunchedEffect(episodeId) { vm.load(episodeId) }
 
     val episode by vm.episode.collectAsState()
+    val np by SongPlayer.nowPlaying
     val finished = vm.finished.value
     var menuOpen by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
-    val np by SongPlayer.nowPlaying
     val uri = "spotify:episode:$episodeId"
-    val playing = np.uri == uri && SongPlayer.isPlaying()
+    val playing = (np.uri == uri || SongPlayer.isEpisodeCurrent(episodeId)) && SongPlayer.isPlaying()
     val saved = SongPlayer.library[uri] == true
+    val spotifyChapters by vm.chapters.collectAsState()
+    val chaptersLoading = vm.chaptersLoading.value
+    val descriptionChapters = remember(episode?.description) {
+        com.music.spotui.data.entity.parsePodcastChapters(episode?.description.orEmpty())
+    }
+    val chapters = remember(spotifyChapters, descriptionChapters) {
+        spotifyChapters.map {
+            com.music.spotui.data.entity.PodcastChapter(
+                positionMs = it.startMs,
+                title = it.title,
+                source = com.music.spotui.data.entity.PodcastChapterSource.SPOTIFY_TRANSCRIPT,
+            )
+        }.ifEmpty { descriptionChapters }
+    }
+    val chaptersFromSpotify = spotifyChapters.isNotEmpty()
 
     fun play() {
         val ep = episode ?: return
-        SongPlayer.playSong(ep.url, context)
+        val resumeAt = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+        if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+            com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+        }
+        SongPlayer.playSong(ep.url, context, positionMs = resumeAt.takeIf { it > 0L })
         // The mini player and the notification show it before Spotify reports it.
         com.music.spotui.di.Graph.currentSongState.updateSongState(ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album)
     }
@@ -329,7 +350,7 @@ fun ImmersiveEpisodeScreen(navController: NavController, episodeId: String, fall
                         stringResource(if (saved) R.string.episode_unsave else R.string.episode_save),
                         onClick = { episode?.let { SongPlayer.setSaved(it.spotifyUri, !saved) } },
                     )
-                    episode?.let { EpisodeDownloadButton(it, size = 26.dp) }
+                    episode?.let { EpisodeDownloadButton(it, size = 30.dp) }
                     ImmersiveCircleButton(Icons.Rounded.IosShare, stringResource(R.string.a11y_share), onClick = { episode?.let { shareEpisode(context, it) } })
                     ImmersiveCircleButton(Icons.Rounded.MoreHoriz, stringResource(R.string.episode_options), onClick = { menuOpen = true })
                     Spacer(Modifier.weight(1f))
@@ -345,12 +366,71 @@ fun ImmersiveEpisodeScreen(navController: NavController, episodeId: String, fall
         if (vm.loading.value) immersiveSongListSkeleton(count = 2, keyPrefix = "episode:loading")
         if (vm.failed.value) item(key = "failed") { ImmersiveMessageState(stringResource(R.string.episode_not_found)) }
         episode?.let { ep ->
-            if (ep.playedPositionMs > 0 && !finished) item(key = "remaining") {
+            val localPosition = com.music.spotui.data.preferences.PodcastPrefs.positionMs(episodeId)
+            val resumePosition = maxOf(ep.playedPositionMs, localPosition)
+            if (resumePosition > 0L && !finished) item(key = "remaining") {
                 Text(
-                    stringResource(R.string.episode_remaining, episodeClock(ep.durationMs - ep.playedPositionMs)),
+                    stringResource(R.string.episode_remaining, episodeClock((ep.durationMs.toLong() - resumePosition).coerceAtLeast(0L))),
                     style = Immersive.Caption.copy(color = Immersive.Accent),
                     modifier = Modifier.padding(horizontal = Immersive.Gutter, vertical = 4.dp),
                 )
+            }
+            if (chaptersLoading && chapters.isEmpty()) item(key = "chapters-loading") {
+                Text(
+                    stringResource(R.string.podcast_chapters_loading),
+                    style = Immersive.Caption,
+                    modifier = Modifier.padding(horizontal = Immersive.Gutter, vertical = 12.dp),
+                )
+            }
+            if (chapters.isNotEmpty()) item(key = "chapters-heading") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = Immersive.Gutter, vertical = 12.dp)) {
+                    Text(stringResource(R.string.podcast_chapters), style = Immersive.Headline)
+                    Text(
+                        stringResource(
+                            if (chaptersFromSpotify) R.string.podcast_chapters_spotify
+                            else R.string.podcast_chapters_description,
+                        ),
+                        style = Immersive.Caption,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
+                }
+            }
+            if (chapters.isNotEmpty()) items(chapters, key = { "chapter:${it.positionMs}" }) { chapter ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                        .heightIn(min = 56.dp)
+                        .immersiveClickable(
+                            onClick = {
+                                if (SongPlayer.isEpisodeCurrent(episodeId)) {
+                                    SongPlayer.seekTo(chapter.positionMs)
+                                } else {
+                                    if (com.music.spotui.data.preferences.PodcastPrefs.isCompleted(episodeId)) {
+                                        com.music.spotui.data.preferences.PodcastPrefs.resetProgress(episodeId)
+                                    }
+                                    SongPlayer.playSong(ep.url, context, positionMs = chapter.positionMs)
+                                    com.music.spotui.di.Graph.currentSongState.updateSongState(
+                                        ep.coverUri, ep.title, ep.singer, true, ep.id, 0, ep.album,
+                                    )
+                                }
+                            },
+                            pressedScale = 0.98f,
+                        )
+                        .padding(horizontal = Immersive.Gutter, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Immersive.Accent)
+                    Text(
+                        chapter.title,
+                        style = Immersive.Body.copy(color = Immersive.Text),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 12.dp, end = 12.dp),
+                    )
+                    Text(
+                        episodeClock(chapter.positionMs),
+                        style = Immersive.Caption.copy(color = Immersive.Accent),
+                    )
+                }
             }
             if (ep.description.isNotBlank()) item(key = "description") {
                 Column(

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Material Icons "home" (Google, Apache License 2.0). Tinted by the caller. -->
+<!-- Spotify Encore Home glyph (24x24), adapted from the SVG used by the Spotify web navigation. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="23dp" android:height="22dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z" />
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21,22V7.174L11.999,1.979L3,7.214V22h7v-7h4v7z" />
 </vector>
